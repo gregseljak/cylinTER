@@ -51,8 +51,8 @@ class FlowGen():
 
     def generate_trajectories(self, nb_frames, nb_particles, dt):
         positions = np.zeros((nb_frames, nb_particles), dtype=complex) # frame number, particle, (x,y)
-        #positions[0,:] = 0.75j -self.xspan      # debugging
-        positions[0,:] = 1j*np.random.uniform(-3,3,nb_particles) - self.xspan
+        positions[0,:] += np.random.uniform(-0.2,0.2,nb_particles) - 1*self.xspan
+        positions[0,:] += 1j*np.random.uniform(-3,3,nb_particles)
         for frame in range(nb_frames-1):
             positions[frame+1] = positions[frame] + self.velocityfield(positions[frame])*dt
         return positions
@@ -94,7 +94,7 @@ class FlowGen():
 
 def main():
     flow = FlowGen()
-    flow.show_movie(100, 5)
+    flow.show_movie(100, nb_particles=50)
 
 if __name__ == "__main__":
     main()
