@@ -13,11 +13,13 @@ class FlowGen():
         self.psi = self.psi_from_v(np.linspace(1.0001, 1.99, 20))
         self.phi = np.linspace(0,1,5)
         self.streams = np.empty((len(self.psi), self.radlen), dtype=complex)
-        self.equiphi = np.empty((len(self.psi), self.radlen), dtype= complex)
+        self.equiphi = np.empty((len(self.psi), self.radlen), dtype=complex)
         self.v0 = 1
+        self.particle_mass = 1
         self.populate_equilines()
     
     def populate_equilines(self):
+        """ Find points along streams and equipotentials for plotting"""
         phi = np.linspace(-20,20,len(self.psi))
         for i in range(len(self.psi)):
             radii = np.linspace(self.a+ 0.001, 15, self.radlen, dtype=np.double)
@@ -25,17 +27,18 @@ class FlowGen():
             x = np.sqrt(radii**2-y**2)
             self.streams[i,:] = x + 1j*y
 
-            points = np.empty(len(radii))
+            plotpoints = np.empty(len(radii))
             theta = np.arccos(phi[i]/self.v0*radii/(radii**2 + 1))
-            points = radii * np.cos(theta) + 1j* radii * np.sin(theta)
-            points = points[np.argsort(np.real(points))] # sort by real part
-            #points = np.append(np.flip(-1*np.conj(points)), points)
-            self.equiphi[i] = points
+            plotpoints = radii * np.cos(theta) + 1j* radii * np.sin(theta)
+            plotpoints = plotpoints[np.argsort(np.real(plotpoints))] # sort by real part
+            self.equiphi[i] = plotpoints
 
 
     def psi_from_v(self, velocity):
+        """ Recover value of psi given a velocity;
+        allows for equal spacing of streamlines to indicate
+        velocity gradient """
         y0 = self.a*np.sqrt(self.v0/(velocity-self.v0))
-        #psi = self.v0*(1-(self.a/y0)**2)*y0
         psi = self.v0 * (1-(self.v0/(velocity-self.v0)))*np.sqrt(self.v0/(velocity-self.v0))*self.a
         for xintcp in y0:
             if (xintcp < self.a):
@@ -56,7 +59,12 @@ class FlowGen():
             x = np.append(-1*np.flip(np.real(stream)), np.real(stream))
             y = np.append(np.flip(np.imag(stream)), np.imag(stream))
             ax.plot(x, y, color="C0")
-
+            x = np.nan_to_num(x, nan=0)
+            badsection = np.where(x == 0)[0]
+            if (badsection.shape[0] < 2*len(stream)-2):
+                b0, bf = badsection[0]-1, badsection[-1]+1
+                if ((abs(y[b0]) >= self.a) and (abs(y[bf]) >= self.a)): 
+                    ax.plot(np.array([x[b0], x[bf]]), np.array([y[b0], y[bf]]), color="C0", linestyle="-")
         ax.set_zorder(0)
         ax.set_aspect(1)
 
@@ -70,11 +78,15 @@ class FlowGen():
         return velocity
 
     def generate_trajectories(self, nb_frames, nb_particles, dt):
-        positions = np.zeros((nb_frames, nb_particles), dtype=complex) # frame number, particle, (x,y)
+        """ create a matrix of complex-valued coordinates that advance iteratively by time step"""
+        positions = np.zeros((nb_frames, nb_particles), dtype=complex) # frame number, particle, (x,1j*y)
         positions[0,:] += np.random.uniform(-0.2,0.2,nb_particles) - 1*self.xspan
         positions[0,:] += 1j*np.random.uniform(-3,3,nb_particles)
+        velocity = np.zeros((nb_particles), dtype=complex)
         for frame in range(nb_frames-1):
-            positions[frame+1] = positions[frame] + self.velocityfield(positions[frame])*dt
+            #velocity += self.velocityfield(positions[frame])/self.particle_mass
+            velocity = self.velocityfield(positions[frame])
+            positions[frame+1] = positions[frame] + velocity*dt
         return positions
 
     def show_movie(self, nb_frames=100, nb_particles = 2):
@@ -86,7 +98,6 @@ class FlowGen():
         self.xspan = 5
         dt = 0.1
         coordinates = self.generate_trajectories(nb_frames, nb_particles, dt)
-        print(np.min(np.imag(coordinates)), np.max(np.imag(coordinates)))
         f0, ax = plt.subplots()
         self.plot_stream(ax)
         # plot the cylinder
@@ -98,23 +109,23 @@ class FlowGen():
         ax.set_xlim([-1*self.xspan*1.1,self.xspan*1.1])
         ax.set_ylim([-1*self.xspan*1.1,self.xspan*1.1])
         ax.set_aspect(1)
-        framerate = 10
+        framerate = 1
         def updateData(frame):
-            stack = np.column_stack(( np.real(coordinates[frame]),
-                np.imag(coordinates[frame])))
+            stack = np.column_stack(( np.real(coordinates[framerate*frame]),
+                np.imag(coordinates[framerate*frame])))
             carte.set_offsets(stack)
             
             return carte
 
         anime = animation.FuncAnimation(
-            f0, updateData, blit=False, frames=coordinates.shape[0], interval=0.1, repeat=True)
+            f0, updateData, blit=False, frames=coordinates.shape[0], interval=1, repeat=True)
         # f0.tight_layout()
         plt.show()
         plt.close()
 
 def main():
     flow = FlowGen()
-    flow.show_movie(100,50)
+    flow.show_movie(1000,50)
     return flow
     #flow.show_movie(100, nb_particles=50)
 
