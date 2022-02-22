@@ -7,17 +7,31 @@ class FlowGen():
 
     def __init__(self):
         self.v0 = 1
-        self.res = 100000
+        self.res = 10000
         self.a = 1
         self.radlen = int(self.res*np.sqrt(2))
         self.psi = self.psi_from_v(np.linspace(1.0001, 1.99, 20))
+        self.phi = np.linspace(0,1,5)
         self.streams = np.empty((len(self.psi), self.radlen), dtype=complex)
+        self.equiphi = np.empty((len(self.psi), self.radlen), dtype= complex)
         self.v0 = 1
+        self.populate_equilines()
+    
+    def populate_equilines(self):
+        phi = np.linspace(-20,20,len(self.psi))
         for i in range(len(self.psi)):
             radii = np.linspace(self.a+ 0.001, 15, self.radlen, dtype=np.double)
             y = self.psi[i]/(radii**2-(self.a)**2)*radii**2
             x = np.sqrt(radii**2-y**2)
             self.streams[i,:] = x + 1j*y
+
+            points = np.empty(len(radii))
+            theta = np.arccos(phi[i]/self.v0*radii/(radii**2 + 1))
+            points = radii * np.cos(theta) + 1j* radii * np.sin(theta)
+            points = points[np.argsort(np.real(points))] # sort by real part
+            #points = np.append(np.flip(-1*np.conj(points)), points)
+            self.equiphi[i] = points
+
 
     def psi_from_v(self, velocity):
         y0 = self.a*np.sqrt(self.v0/(velocity-self.v0))
@@ -33,10 +47,16 @@ class FlowGen():
         return np.append(antiarray, array)
 
     def plot_stream(self, ax):
+        for equiline in self.equiphi:
+            x = np.real(equiline)
+            y = np.imag(equiline)
+            ax.plot(x,y, color = "gray")
+            ax.plot(x, -1*y, color = "gray")
         for stream in self.streams:
             x = np.append(-1*np.flip(np.real(stream)), np.real(stream))
             y = np.append(np.flip(np.imag(stream)), np.imag(stream))
             ax.plot(x, y, color="C0")
+
         ax.set_zorder(0)
         ax.set_aspect(1)
 
@@ -94,9 +114,17 @@ class FlowGen():
 
 def main():
     flow = FlowGen()
-    flow.show_movie(100, nb_particles=50)
+    flow.show_movie(100,50)
+    return flow
+    #flow.show_movie(100, nb_particles=50)
 
 if __name__ == "__main__":
-    main()
+    flow = main()
 
-    # %%
+#%%
+import numpy as np
+import matplotlib.pyplot as plt
+
+# %%
+
+# %%
