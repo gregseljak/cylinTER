@@ -17,6 +17,9 @@ class FlowGen():
         self.v0 = 1
         self.particle_mass = 1
         self.populate_equilines()
+        self.schema = "RK4" # or "FE" or "RE"
+        self.schema_dict = {"RK4": "Runge-Kutta 4",
+            "FE":"Forward-Euler", "RE":"Reverse-Euler"}
     
     def populate_equilines(self):
         """ Find points along streams and equipotentials for plotting"""
@@ -77,17 +80,41 @@ class FlowGen():
         velocity += -1j*self.v0/(r**4)*2*self.a*np.real(instant_positions)*np.imag(instant_positions)
         return velocity
 
-    def generate_trajectories(self, nb_frames, nb_particles, dt):
+    def generate_trajectories(self, nb_frames, nb_particles, dt, initial_positions=None):
         """ create a matrix of complex-valued coordinates that advance iteratively by time step"""
         positions = np.zeros((nb_frames, nb_particles), dtype=complex) # frame number, particle, (x,1j*y)
-        positions[0,:] += np.random.uniform(-0.2,0.2,nb_particles) - 1*self.xspan
-        positions[0,:] += 1j*np.random.uniform(-3,3,nb_particles)
-        velocity = np.zeros((nb_particles), dtype=complex)
-        for frame in range(nb_frames-1):
-            #velocity += self.velocityfield(positions[frame])/self.particle_mass
-            velocity = self.velocityfield(positions[frame])
-            positions[frame+1] = positions[frame] + velocity*dt
+        if initial_positions:
+            positions[0,:] = initial_positions
+        else:
+            positions[0,:] = self.random_initial_positions(nb_particles)
+        self.velocity = np.zeros((nb_frames, nb_particles), dtype=complex)
+        
+        if self.schema == "FE":
+            for frame in range(nb_frames-1):
+                #velocity += self.velocityfield(positions[frame])/self.particle_mass
+                self.velocity[frame] = self.velocityfield(positions[frame])
+                positions[frame+1] = positions[frame] + self.velocity[frame]*dt
+            
+        
+        elif self.schema == "RK4":
+            for frame in range(nb_frames-1):
+                k1 = self.velocityfield(positions[frame])
+                k2 = self.velocityfield(positions[frame] + dt*k1/2)
+                k3 = self.velocityfield(positions[frame] + dt*k2/2)
+                k4 = self.velocityfield(positions[frame] + dt*k3)
+                self.velocity[frame] = (k1+2*k2+2*k3+k4)/6
+                positions[frame+1] = positions[frame] + self.velocity[frame]*dt
+
         return positions
+
+    def random_initial_positions(self, nb_particles):
+        position = np.zeros(nb_particles, dtype=complex)
+        position += np.random.uniform(-0.2,0.2,nb_particles) - 1*self.xspan
+        position += 1j*np.random.uniform(-3,3,nb_particles)
+        return position
+
+    def schema_evaluation(self):
+        pass
 
     def show_movie(self, nb_frames=100, nb_particles = 2):
         """
@@ -131,11 +158,3 @@ def main():
 
 if __name__ == "__main__":
     flow = main()
-
-#%%
-import numpy as np
-import matplotlib.pyplot as plt
-
-# %%
-
-# %%
