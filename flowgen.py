@@ -116,6 +116,60 @@ class FlowGen():
     def schema_evaluation(self):
         pass
 
+    def y_from_psix(self, inpsi = None, xvals_in = None):
+        # Given a populated np.array of psi and x, find y
+        npsi = None
+        xvals = None
+        if inpsi is not None:
+            npsi = inpsi
+        else:
+            npsi = self.psi
+        if xvals_in is not None:
+            xvals = xvals_in
+        else:
+            xvals = np.linspace(-1*abs(self.xspan), abs(self.xspan), 1000)
+
+        solution = np.zeros((len(npsi), len(xvals)))
+        print(f"solution shape: {solution.shape}")
+
+        a = 1
+        
+        for i in range(len(npsi)):
+            b = npsi[i]/(-1*self.v0)
+
+            for j in range(len(xvals)):
+                x = xvals[j]
+                c = (x**2-self.a**2)
+                d = b*(x**2)
+                roots = np.roots([a,b,c,d])
+                """ Alors on aura 3 racines. S'il n'y a qu'une qui
+                est réelle on a fini. Sinon il faut appliquer un peu
+                de logique...
+                """
+                if np.sum(np.imag(roots) == 0) == 1:
+                    # if only one real, choose by lowest imag value
+                    solution[i,j] = roots[np.argmin(np.abs(np.imag(roots)))]
+                elif j > 0:
+                    # if multiple candidates or no candidates, decide by continuity
+                    solution[i,j] = np.real(roots[np.argmin(np.abs(np.real(roots) - solution[i,j-1]))])
+                else:
+                    solution[i,j] = np.real(roots[np.argmin(np.abs(np.imag(roots)/np.real(roots)))])
+                    print(f"""WARNING - no obvious choice found for 
+                    {npsi[i]}, {x}. Consider reordering or extending x_in
+                    Resorting to best guess {solution[i,j]}; check fpt error""")
+                
+        """
+        comment: Some values of psi are giving three real
+        roots, which indicates that there are several possible values
+        for y(x). In practice it is easy to see which ones are extraneous
+        as the cubic-root-finding function is continuous with respect to
+        b and d.
+
+        Question: interpretation? Threshold values of (psi, x)? 
+        """
+        return solution
+
+
     def show_movie(self, nb_frames=100, nb_particles = 2):
         """
         1. pre-render the trajectories of the particles
@@ -131,7 +185,7 @@ class FlowGen():
         t = np.linspace(0, 2*np.pi, 100)
         fig = ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
         
-        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s= 10, color="red") #4.5, "gray"
+        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=10, color="red") #4.5, "gray"
         carte.set_zorder(10)
         ax.set_xlim([-1*self.xspan*1.1,self.xspan*1.1])
         ax.set_ylim([-1*self.xspan*1.1,self.xspan*1.1])
@@ -152,7 +206,16 @@ class FlowGen():
 
 def main():
     flow = FlowGen()
-    flow.show_movie(1000,50)
+    f0, ax = plt.subplots()
+    flow.xspan = 2
+    flow.plot_stream(ax)
+    interval = np.linspace(-4,4, 1000)
+    y0a = flow.y_from_psix(flow.psi[4:10], interval)
+    for y0 in y0a:
+        mydots = ax.scatter(interval, y0, color="red")
+    mydots.set_zorder(100)
+    plt.show()
+    #flow.show_movie(1000,50)
     return flow
     #flow.show_movie(100, nb_particles=50)
 
