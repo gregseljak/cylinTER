@@ -1,18 +1,18 @@
 #%%
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 class FlowGen():
 
 
     def __init__(self):
         self.v0 = 1
-        self.res = 10000
+        self.xintval = np.array([-6,6])
+        self.res = 1000
         self.a = 1
         self.radlen = int(self.res*np.sqrt(2))
         self.psi = self.psi_from_v(np.linspace(1.0001, 1.99, 20))
         self.phi = np.linspace(0,1,5)
-        self.streams = np.empty((len(self.psi), self.radlen), dtype=complex)
+        self.dt = 0.001
+        self.streams = np.empty((len(self.psi), self.res), dtype=complex)
         self.equiphi = np.empty((len(self.psi), self.radlen), dtype=complex)
         self.v0 = 1
         self.particle_mass = 1
@@ -21,23 +21,25 @@ class FlowGen():
         self.schema_dict = {"RK4": "Runge-Kutta 4",
             "FE":"Forward-Euler", "RE":"Reverse-Euler"}
     
+
     def populate_equilines(self):
         """ Find points along streams and equipotentials for plotting"""
         phi = np.linspace(-20,20,len(self.psi))
+        x = self.xintval
+        y = self.y_from_psix(self.psi, x)
+        self.streams = x + 1j*y
+
         for i in range(len(self.psi)):
             radii = np.linspace(self.a+ 0.001, 15, self.radlen, dtype=np.double)
-            y = self.psi[i]/(radii**2-(self.a)**2)*radii**2
-            x = np.sqrt(radii**2-y**2)
-            self.streams[i,:] = x + 1j*y
-
             plotpoints = np.empty(len(radii))
             theta = np.arccos(phi[i]/self.v0*radii/(radii**2 + 1))
             plotpoints = radii * np.cos(theta) + 1j* radii * np.sin(theta)
             plotpoints = plotpoints[np.argsort(np.real(plotpoints))] # sort by real part
             self.equiphi[i] = plotpoints
+        print(f" streams.shape {self.streams.shape}")
+        print(f" equiphi {self.equiphi.shape}")
 
-
-    def psi_from_v(self, velocity):
+    def psi_from_v(self, velocity): #checked: good
         """ Recover value of psi given a velocity;
         allows for equal spacing of streamlines to indicate
         velocity gradient """
@@ -48,89 +50,97 @@ class FlowGen():
                 continue
         return self.antisymmetrize(psi)
     
-    def antisymmetrize(self, array):
+    def antisymmetrize(self, array):    #checked: good
         antiarray = -1*np.flip(array)
         return np.append(antiarray, array)
 
-    def plot_stream(self, ax):
+    def plot_stream(self, ax):          # good
         for equiline in self.equiphi:
             x = np.real(equiline)
             y = np.imag(equiline)
             ax.plot(x,y, color = "gray")
             ax.plot(x, -1*y, color = "gray")
         for stream in self.streams:
-            x = np.append(-1*np.flip(np.real(stream)), np.real(stream))
-            y = np.append(np.flip(np.imag(stream)), np.imag(stream))
-            ax.plot(x, y, color="C0")
-            x = np.nan_to_num(x, nan=0)
-            badsection = np.where(x == 0)[0]
-            if (badsection.shape[0] < 2*len(stream)-2):
-                b0, bf = badsection[0]-1, badsection[-1]+1
-                if ((abs(y[b0]) >= self.a) and (abs(y[bf]) >= self.a)): 
-                    ax.plot(np.array([x[b0], x[bf]]), np.array([y[b0], y[bf]]), color="C0", linestyle="-")
+            x = np.real(stream)
+            y = np.imag(stream)
+            if (np.min(np.abs(np.imag(stream))) <= (self.xintval[1] - self.xintval[0])):
+                ax.plot(x, y, color="C0")
         ax.set_zorder(0)
         ax.set_aspect(1)
 
-    def velocityfield(self, instant_positions):
+    def _particle_velocityfield(self, u):
         """takes complex-valued 1d numpy array
             returns d(phi)/dz evaluated at those points"""
-        velocity = np.zeros(instant_positions.shape, dtype=complex)
-        r = np.abs(instant_positions)
-        velocity += self.v0*(1 + self.a**2/r**2 - 2*(self.a**2)*(np.real(instant_positions)**2)/(r**4))
-        velocity += -1j*self.v0/(r**4)*2*self.a*np.real(instant_positions)*np.imag(instant_positions)
+        velocity = 0 + 0j
+        r = np.abs(u)
+        velocity += self.v0*(1 + self.a**2/r**2 - 2*(self.a**2)*(np.real(u)**2)/(r**4))
+        velocity += -1j*self.v0/(r**4)*2*self.a*np.real(u)*np.imag(u)
         return velocity
 
-    def generate_trajectories(self, nb_frames, nb_particles, dt, initial_positions=None):
+    def xintval_integration(self, initial_positions=None):
         """ create a matrix of complex-valued coordinates that advance iteratively by time step"""
-        positions = np.zeros((nb_frames, nb_particles), dtype=complex) # frame number, particle, (x,1j*y)
-        if initial_positions:
-            positions[0,:] = initial_positions
-        else:
-            positions[0,:] = self.random_initial_positions(nb_particles)
-        self.velocity = np.zeros((nb_frames, nb_particles), dtype=complex)
-        
-        if self.schema == "FE":
-            for frame in range(nb_frames-1):
-                #velocity += self.velocityfield(positions[frame])/self.particle_mass
-                self.velocity[frame] = self.velocityfield(positions[frame])
-                positions[frame+1] = positions[frame] + self.velocity[frame]*dt
+        dt = self.dt
+        positions = None
+        y0 = None
+        static_castx = np.array([self.xintval[0]])  # unfortunately necessary
+        y0 = self.y_from_psix(inpsi = self.psi, xvals_in=static_castx)
+        #print(f" y0 = {y0}")
+        positions = [ [] for _ in range(len(y0)) ]
+        maxlength = 0
+        for i in range(len(y0)):
+            itercounter = 0
             
-        
-        elif self.schema == "RK4":
-            for frame in range(nb_frames-1):
-                k1 = self.velocityfield(positions[frame])
-                k2 = self.velocityfield(positions[frame] + dt*k1/2)
-                k3 = self.velocityfield(positions[frame] + dt*k2/2)
-                k4 = self.velocityfield(positions[frame] + dt*k3)
-                self.velocity[frame] = (k1+2*k2+2*k3+k4)/6
-                positions[frame+1] = positions[frame] + self.velocity[frame]*dt
+            u = (self.xintval[0] + 1j*y0[i])[0]
+            (positions[i]).append(u)
+            while (np.real(u) < self.xintval[1]):
+                velocity = 0 + 0j
+                itercounter += 1
+                if itercounter % 2500 == 0:
+                    print(f" particle {y0[i]} at {itercounter}: {np.real(u), np.imag(u)}")
 
-        return positions
+                if self.schema == "FE":
+                    velocity = self._particle_velocityfield(u)
+                    
+                
+                elif self.schema == "RK4":
+                    
+                    k1 = self._particle_velocityfield(u)
+                    k2 = self._particle_velocityfield(u + dt*k1/2)
+                    k3 = self._particle_velocityfield(u + dt*k2/2)
+                    k4 = self._particle_velocityfield(u + dt*k3)
+                    velocity = (k1+2*k2+2*k3+k4)/6
+                if (np.real(velocity) < 0):
+                    print(f" BAD VELOCITY AT y0 = {y0}, step {itercounter}")
+                    quit()
+                u += velocity*dt
+                (positions[i]).append(u)
 
-    def random_initial_positions(self, nb_particles):
-        position = np.zeros(nb_particles, dtype=complex)
-        position += np.random.uniform(-0.2,0.2,nb_particles) - 1*self.xspan
-        position += 1j*np.random.uniform(-3,3,nb_particles)
-        return position
+        maxlength = max(len(i) for i in positions)            
+        pos_array = np.empty((len(y0), maxlength), dtype=complex)
+        print(f" maxlen {maxlength}")
+        for i in range(len(pos_array)):
+            ulen = len(positions[i])
+            print(f" ulen { ulen }")
+            pos_array[i,:ulen] = np.array(positions[i])
+            pos_array[i,ulen:] = np.nan
+        return pos_array
 
-    def schema_evaluation(self):
-        pass
-
-    def y_from_psix(self, inpsi = None, xvals_in = None):
+    def y_from_psix(self, inpsi = None, xvals_in = None, innerstream=None):
         # Given a populated np.array of psi and x, find y
         npsi = None
         xvals = None
         if inpsi is not None:
             npsi = inpsi
+            if not isinstance(inpsi, np.ndarray):
+                inpsi = np.array([inpsi])
         else:
             npsi = self.psi
         if xvals_in is not None:
             xvals = xvals_in
         else:
-            xvals = np.linspace(-1*abs(self.xspan), abs(self.xspan), 1000)
+            xvals = np.linspace(self.xintval[0], self.xintval[1], 1000)
 
         solution = np.zeros((len(npsi), len(xvals)))
-        print(f"solution shape: {solution.shape}")
 
         a = 1
         
@@ -148,73 +158,66 @@ class FlowGen():
                 """
                 if np.sum(np.imag(roots) == 0) == 1:
                     # if only one real, choose by lowest imag value
-                    solution[i,j] = roots[np.argmin(np.abs(np.imag(roots)))]
-                elif j > 0:
-                    # if multiple candidates or no candidates, decide by continuity
-                    solution[i,j] = np.real(roots[np.argmin(np.abs(np.real(roots) - solution[i,j-1]))])
+                    if not innerstream:
+                        solution[i,j] = roots[np.argmin(np.abs(np.imag(roots)))]
+                    else:
+                        solution[i,j] = np.nan
+                elif (j > 0):
+                    # if multiple candidates or no candidates, decide by magnitude
+                    if not innerstream:
+                        solution[i,j] = np.real(roots[np.argmax(np.abs(np.real(roots)))])
+
                 else:
                     solution[i,j] = np.real(roots[np.argmin(np.abs(np.imag(roots)/np.real(roots)))])
                     print(f"""WARNING - no obvious choice found for 
                     {npsi[i]}, {x}. Consider reordering or extending x_in
                     Resorting to best guess {solution[i,j]}; check fpt error""")
                 
-        """
-        comment: Some values of psi are giving three real
-        roots, which indicates that there are several possible values
-        for y(x). In practice it is easy to see which ones are extraneous
-        as the cubic-root-finding function is continuous with respect to
-        b and d.
-
-        Question: interpretation? Threshold values of (psi, x)? 
-        """
         return solution
 
+    def evaluate_xerror(self):
+        """
+        1. calculer la trajectoires des particules avec le schema choisi
 
-    def show_movie(self, nb_frames=100, nb_particles = 2):
+        Puis, pour chaque trajectoire:
+        1. on calcule psi
+        2. on isole les valeurs reelles (x)
+        3. on retrouve la trajectoire analytique avec .y_from_psix(psi, x)
+            -- exactement la solution voulue
+        4. Pour trouver l'integrale on fait la partition de la trajectoire
+            comme elle se présente directement
         """
-        1. pre-render the trajectories of the particles
-        2. plot background (streamlines, cylinder)
-        3. build animation
-        """
-        self.xspan = 5
-        dt = 0.1
-        coordinates = self.generate_trajectories(nb_frames, nb_particles, dt)
-        f0, ax = plt.subplots()
-        self.plot_stream(ax)
-        # plot the cylinder
-        t = np.linspace(0, 2*np.pi, 100)
-        fig = ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
+        self.schema = "RK4"
+
+        rk4 = self.xintval_integration()
+        validity_vec = np.argmin(np.isnan(rk4) == False, axis=1)
+        psivals = self.v0*(1-self.a**2/ ((np.abs(rk4[:,0]))**2) )*np.imag(rk4[:,0])
+        true_rk4 = np.zeros(rk4.shape, dtype=complex)
+        yerrors = np.zeros(len(rk4))
+        for i in range(len(rk4)):
+            last_idx = 0
+            if validity_vec[i] != 0:
+                last_idx = validity_vec[i]
+            else:
+                last_idx = -1
+            true_rk4[i,:last_idx] = 1j*self.y_from_psix(np.array([psivals[i]]), np.real(rk4[i,:last_idx]))
+            true_rk4[i,:last_idx] += np.real(rk4[i,:last_idx])
+            xmaillage = np.real(rk4[i,:last_idx]) - np.real(np.roll(rk4[i, :last_idx], shift=1))
+            xmaillage[0] = (self.xintval[1] - self.xintval[0]) - np.sum(xmaillage[1:])
+            yerr = xmaillage*np.abs(np.imag(true_rk4[i,:last_idx]) - np.imag(rk4[i,:last_idx]))
+            yerrors[i] = np.sum(yerr)
+        return yerrors
+
+        #print(rk4[:,0] - true_rk4[:,0])
+
         
-        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=10, color="red") #4.5, "gray"
-        carte.set_zorder(10)
-        ax.set_xlim([-1*self.xspan*1.1,self.xspan*1.1])
-        ax.set_ylim([-1*self.xspan*1.1,self.xspan*1.1])
-        ax.set_aspect(1)
-        framerate = 1
-        def updateData(frame):
-            stack = np.column_stack(( np.real(coordinates[framerate*frame]),
-                np.imag(coordinates[framerate*frame])))
-            carte.set_offsets(stack)
-            
-            return carte
 
-        anime = animation.FuncAnimation(
-            f0, updateData, blit=False, frames=coordinates.shape[0], interval=1, repeat=True)
-        # f0.tight_layout()
-        plt.show()
-        plt.close()
 
 def main():
     flow = FlowGen()
-    f0, ax = plt.subplots()
-    flow.xspan = 2
-    flow.plot_stream(ax)
-    interval = np.linspace(-4,4, 1000)
-    y0a = flow.y_from_psix(flow.psi[4:10], interval)
-    for y0 in y0a:
-        mydots = ax.scatter(interval, y0, color="red")
-    mydots.set_zorder(100)
-    plt.show()
+    flow.xintval = np.array([-1,1])
+    flow.schema = "FE"
+    print(flow.evaluate_xerror())
     #flow.show_movie(1000,50)
     return flow
     #flow.show_movie(100, nb_particles=50)
