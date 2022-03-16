@@ -25,7 +25,7 @@ class FlowGen():
     def populate_equilines(self):
         """ Find points along streams and equipotentials for plotting"""
         phi = np.linspace(-20,20,len(self.psi))
-        x = self.xintval
+        x = np.linspace(self.xintval[0], self.xintval[1], 1000)
         y = self.y_from_psix(self.psi, x)
         self.streams = x + 1j*y
 
@@ -54,20 +54,6 @@ class FlowGen():
         antiarray = -1*np.flip(array)
         return np.append(antiarray, array)
 
-    def plot_stream(self, ax):          # good
-        for equiline in self.equiphi:
-            x = np.real(equiline)
-            y = np.imag(equiline)
-            ax.plot(x,y, color = "gray")
-            ax.plot(x, -1*y, color = "gray")
-        for stream in self.streams:
-            x = np.real(stream)
-            y = np.imag(stream)
-            if (np.min(np.abs(np.imag(stream))) <= (self.xintval[1] - self.xintval[0])):
-                ax.plot(x, y, color="C0")
-        ax.set_zorder(0)
-        ax.set_aspect(1)
-
     def _particle_velocityfield(self, u):
         """takes complex-valued 1d numpy array
             returns d(phi)/dz evaluated at those points"""
@@ -77,7 +63,7 @@ class FlowGen():
         velocity += -1j*self.v0/(r**4)*2*self.a*np.real(u)*np.imag(u)
         return velocity
 
-    def xintval_integration(self, initial_positions=None):
+    def xintval_integration(self, mindx = 0.001):
         """ create a matrix of complex-valued coordinates that advance iteratively by time step"""
         dt = self.dt
         positions = None
@@ -113,7 +99,13 @@ class FlowGen():
                     print(f" BAD VELOCITY AT y0 = {y0}, step {itercounter}")
                     quit()
                 u += velocity*dt
-                (positions[i]).append(u)
+                if np.abs(np.real((positions[i])[-1] - u)) > mindx:
+                    # if this size of dt renders oversized dx
+                    # reduce timestep size, and then reset the step
+                    dt /= 2
+                    u = (positions[i])[-1]
+                else:
+                    (positions[i]).append(u)
 
         maxlength = max(len(i) for i in positions)            
         pos_array = np.empty((len(y0), maxlength), dtype=complex)
