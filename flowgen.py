@@ -81,8 +81,8 @@ class FlowGen():
             while (np.real(u) < self.xintval[1]):
                 velocity = 0 + 0j
                 itercounter += 1
-                if itercounter % 2500 == 0:
-                    print(f" particle {y0[i]} at {itercounter}: {np.real(u), np.imag(u)}")
+                #if itercounter % 2500 == 0:
+                #    print(f" particle {y0[i]} at {itercounter}: {np.real(u), np.imag(u)}")
 
                 if self.schema == "FE":
                     velocity = self._particle_velocityfield(u)
@@ -112,7 +112,6 @@ class FlowGen():
         print(f" maxlen {maxlength}")
         for i in range(len(pos_array)):
             ulen = len(positions[i])
-            print(f" ulen { ulen }")
             pos_array[i,:ulen] = np.array(positions[i])
             pos_array[i,ulen:] = np.nan
         return pos_array
@@ -207,7 +206,7 @@ class FlowGen():
 
 def main():
     flow = FlowGen()
-    flow.xintval = np.array([-1,1])
+    flow.xintval = np.array([-5,5])
     flow.schema = "FE"
     print(flow.evaluate_xerror())
     #flow.show_movie(1000,50)

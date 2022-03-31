@@ -8,7 +8,8 @@ class FlowMation(flowgen.FlowGen):
     def __init__(self):
         super().__init__()
         self.velocity = None
-    
+        self.positions = None
+        self.dt = 0.1
     def random_initial_positions(self, nb_particles):
         position = np.zeros(nb_particles, dtype=complex)
         position += np.random.uniform(-0.2,0.2,nb_particles) + 1*self.xintval[0]
@@ -22,7 +23,8 @@ class FlowMation(flowgen.FlowGen):
         velocity += -1j*self.v0/(r**4)*2*self.a*np.real(positions)*np.imag(positions)
         return velocity
 
-    def generate_trajectories(self, nb_frames, nb_particles, dt):
+    def generate_trajectories(self, nb_frames, nb_particles):
+        dt = self.dt
         """ create a matrix of complex-valued coordinates that advance iteratively by time step"""
         positions = np.zeros((nb_frames, nb_particles), dtype=complex) # frame number, particle, (x,1j*y)
         positions[0,:] = self.random_initial_positions(nb_particles)
@@ -43,8 +45,9 @@ class FlowMation(flowgen.FlowGen):
                 k4 = self.velocityfield(positions[frame] + dt*k3)
                 self.velocity[frame] = (k1+2*k2+2*k3+k4)/6
                 positions[frame+1] = positions[frame] + self.velocity[frame]*dt
-
+        self.positions = positions
         return positions
+
 
     def show_movie(self, nb_frames=100, nb_particles = 2):
         """
@@ -52,8 +55,7 @@ class FlowMation(flowgen.FlowGen):
         2. plot background (streamlines, cylinder)
         3. build animation
         """
-        dt = 0.1
-        coordinates = self.generate_trajectories(nb_frames, nb_particles, dt)
+        coordinates = self.generate_trajectories(nb_frames, nb_particles)
         f0, ax = plt.subplots()
         self.plot_stream(ax)
         # plot the cylinder
