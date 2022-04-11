@@ -49,13 +49,32 @@ class FlowMation(flowgen.FlowGen):
         return positions
 
 
-    def show_movie(self, nb_frames=100, nb_particles = 2):
+    def show_movie(self, dt=0.1, nb_particles = 2):
         """
         1. pre-render the trajectories of the particles
         2. plot background (streamlines, cylinder)
         3. build animation
+        nb. all movies are 200 frames long
         """
-        coordinates = self.generate_trajectories(nb_frames, nb_particles)
+        nbframe = 200
+        T = self.xintval[1] - self.xintval[0]
+        if dt > T/nbframe:
+            print(f"warning; dt = {dt} too large for nbframe {nbframe}")
+            print(f"defaulting to {T/nbframe}")
+            self.dt = T/nbframe
+        else:
+            self.dt = dt
+        skip = int(T/self.v0/200/self.dt)
+        
+        print("")
+        print("="*15 + "show_movie() debug "+ "="*15)
+        print(f" dt = {self.dt}, T = {T}, skip = {skip}")
+        print(f"200*dt*skip = {200*self.dt*skip}")
+        coordinates = self.generate_trajectories(200*skip, nb_particles)
+        print(f" coordinates initial dims: {coordinates.shape}")
+        coordinates = coordinates[::skip]
+        print(f" ater trim: {coordinates.shape}")
+
         f0, ax = plt.subplots()
         self.plot_stream(ax)
         # plot the cylinder
@@ -77,7 +96,12 @@ class FlowMation(flowgen.FlowGen):
             return carte
 
         anime = animation.FuncAnimation(
-            f0, updateData, blit=False, frames=coordinates.shape[0], interval=1, repeat=True)
+            f0, updateData, blit=False, frames=coordinates.shape[0], interval=5, repeat=True)
+        
+
+        f = r"./animation.mp4" 
+        writervideo = animation.FFMpegWriter(fps=60) 
+        anime.save(f, writer=writervideo)
         plt.show()
         plt.close()
     
@@ -99,4 +123,4 @@ class FlowMation(flowgen.FlowGen):
 if __name__ == "__main__":
     flow = FlowMation()
     print(flow.streams.shape)
-    flow.show_movie(100, 100)
+    flow.show_movie(0.001, 100)
