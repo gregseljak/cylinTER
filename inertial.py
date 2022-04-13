@@ -82,4 +82,4 @@ if __name__ == "__main__":
     flow = InerMation()
     flow.v0 = 0.5
     print(flow.streams.shape)
-    flow.show_movie(0.001, 100,)
+    flow.show_movie(0.001, 200,6)

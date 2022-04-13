@@ -1,10 +1,11 @@
-#%%
+import logging
 import numpy as np
 class FlowGen():
 
 
-    def __init__(self):
+    def __init__(self, gamma=0):
         self.v0 = 1
+        self.gamma = gamma
         self.xintval = np.array([-6,6])
         self.res = 1000
         self.a = 1
@@ -14,8 +15,6 @@ class FlowGen():
         self.dt = 0.001
         self.streams = np.empty((len(self.psi), self.res), dtype=complex)
         self.equiphi = np.empty((len(self.psi), self.radlen), dtype=complex)
-        self.v0 = 1
-        self.particle_mass = 1
         self.populate_equilines()
         self.schema = "RK4" # or "FE" or "RE"
         self.schema_dict = {"RK4": "Runge-Kutta 4",
@@ -39,6 +38,8 @@ class FlowGen():
         print(f" streams.shape {self.streams.shape}")
         print(f" equiphi {self.equiphi.shape}")
 
+    
+
     def psi_from_v(self, velocity): #checked: good
         """ Recover value of psi given a velocity;
         allows for equal spacing of streamlines to indicate
@@ -55,8 +56,8 @@ class FlowGen():
         return np.append(antiarray, array)
 
     def _particle_velocityfield(self, u):
-        """takes complex-valued 1d numpy array
-            returns d(phi)/dz evaluated at those points"""
+        """takes complex-valued singleton numpy array
+            returns d(phi)/dz evaluated at that"""
         velocity = 0 + 0j
         r = np.abs(u)
         velocity += self.v0*(1 + self.a**2/r**2 - 2*(self.a**2)*(np.real(u)**2)/(r**4))
@@ -96,7 +97,7 @@ class FlowGen():
                     k4 = self._particle_velocityfield(u + dt*k3)
                     velocity = (k1+2*k2+2*k3+k4)/6
                 if (np.real(velocity) < 0):
-                    print(f" BAD VELOCITY AT y0 = {y0}, step {itercounter}")
+                    logger.warning(f" BAD VELOCITY AT y0 = {y0}, step {itercounter}")
                     quit()
                 u += velocity*dt
                 if np.abs(np.real((positions[i])[-1] - u)) > mindx:
@@ -160,7 +161,7 @@ class FlowGen():
 
                 else:
                     solution[i,j] = np.real(roots[np.argmin(np.abs(np.imag(roots)/np.real(roots)))])
-                    print(f"""WARNING - no obvious choice found for 
+                    logger.warning(f"""no obvious choice found for 
                     {npsi[i]}, {x}. Consider reordering or extending x_in
                     Resorting to best guess {solution[i,j]}; check fpt error""")
                 
@@ -209,9 +210,21 @@ def main():
     flow.xintval = np.array([-5,5])
     flow.schema = "FE"
     print(flow.evaluate_xerror())
-    #flow.show_movie(1000,50)
+    logger.info("test of logger info")
     return flow
     #flow.show_movie(100, nb_particles=50)
 
 if __name__ == "__main__":
-    flow = main()
+    import argparse
+    parser = argparse.ArgumentParser(description=("Lorentzian generator"))
+    parser.add_argument("-v", type=int, default=3,
+                        help=("set logging level: 0 critical, 1 error, "
+                              "2 warning, 3 info, 4 debug, default info"))
+    
+    args = parser.parse_args()
+    logging_translate = [logging.CRITICAL, logging.ERROR, logging.WARNING,
+                         logging.INFO, logging.DEBUG]
+    logging.basicConfig(level=logging_translate[args.v],
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+    main()

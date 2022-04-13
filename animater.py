@@ -1,7 +1,9 @@
 import flowgen
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import __main__
 
 class FlowMation(flowgen.FlowGen):
 
@@ -10,6 +12,7 @@ class FlowMation(flowgen.FlowGen):
         self.velocity = None
         self.positions = None
         self.dt = 0.1
+        
     def random_initial_positions(self, nb_particles):
         position = np.zeros(nb_particles, dtype=complex)
         position += np.random.uniform(-0.2,0.2,nb_particles) + 1*self.xintval[0]
@@ -67,7 +70,7 @@ class FlowMation(flowgen.FlowGen):
         skip = int(T/self.v0/200/self.dt)
         
         print("")
-        print("="*15 + "show_movie() debug "+ "="*15)
+        print("="*15 + " show_movie() debug "+ "="*15)
         print(f" dt = {self.dt}, T = {T}, skip = {skip}")
         print(f"200*dt*skip = {200*self.dt*skip}")
         coordinates = self.generate_trajectories(200*skip, nb_particles)
@@ -98,10 +101,13 @@ class FlowMation(flowgen.FlowGen):
         anime = animation.FuncAnimation(
             f0, updateData, blit=False, frames=coordinates.shape[0], interval=5, repeat=True)
         
-
-        f = r"./animation.mp4" 
-        writervideo = animation.FFMpegWriter(fps=60) 
-        anime.save(f, writer=writervideo)
+        fname = "./"+__main__.__file__ +".mp4"
+        cpynum = 0
+        while os.path.isfile(fname):
+            fname = "./"+ __main__.__file__ +"_"+cpynum+".mp4" 
+        writervideo = animation.FFMpegWriter(fps=30)
+        anime.save(fname, writer=writervideo)
+        print(f"saved to {fname}")
         plt.show()
         plt.close()
     
