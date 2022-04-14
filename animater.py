@@ -101,10 +101,10 @@ class FlowMation(flowgen.FlowGen):
         anime = animation.FuncAnimation(
             f0, updateData, blit=False, frames=coordinates.shape[0], interval=5, repeat=True)
         
-        fname = "./"+__main__.__file__ +".mp4"
+        fname = "./"+__main__.__file__[:-3] +".mp4"
         cpynum = 0
         while os.path.isfile(fname):
-            fname = "./"+ __main__.__file__ +"_"+cpynum+".mp4" 
+            fname = "./"+ __main__.__file__[:-3]+"_"+cpynum+".mp4" 
         writervideo = animation.FFMpegWriter(fps=30)
         anime.save(fname, writer=writervideo)
         print(f"saved to {fname}")
