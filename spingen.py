@@ -31,7 +31,7 @@ def binsearch(function, domain):
         roots[i] = yguess
     return roots
 
-class FlowGen():
+class SpinGen():
 
 
     def __init__(self, gamma=0):
@@ -248,7 +248,7 @@ class FlowGen():
 
 def main():
     fig, ax = plt.subplots(1)
-    flow = FlowGen(gamma=13.5)
+    flow = SpinGen(gamma=13.5)
     flow.populate_equilines()
     for psilines in flow.streams:
         ax.plot(np.real(psilines), np.imag(psilines))
