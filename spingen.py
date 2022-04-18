@@ -9,7 +9,7 @@ def binsearch(function, domain):
     survey = function(ydomain)
     bigroots = np.where(survey[:-1]*survey[1:] <= 0)[0]
     if len(bigroots) == 0:
-        print(" No roots seen in survey ")
+        #print(" No roots seen in survey ")
         return np.array([])
     roots = np.empty(len(bigroots))
     for i in range(len(roots)):
@@ -27,69 +27,103 @@ def binsearch(function, domain):
             cnt += 1
             if cnt >= threshold:
                 print(f"threshold {threshold} reached")
-                break 
+                break
         roots[i] = yguess
     return roots
+
+def roots_to_parametrization(ragged_array):
+    rgdarr = ragged_array
+    nb_psipts = 0
+    for j in range(len(rgdarr)):
+        nb_psipts += len(rgdarr[j])
+    stream = np.zeros(nb_psipts, dtype=complex)
+    xidx = 0
+    while len(rgdarr[xidx]) == 0:
+        xidx += 1
+        if xidx == len(rgdarr)-1:
+            return np.array([], dtype=complex)
+    arg = np.argmin(np.imag(rgdarr[xidx]))
+    stream[0] = (rgdarr[xidx])[arg]
+    rgdarr[xidx] = np.delete(rgdarr[xidx], arg)
+    xidx += 1
+    for j in range(nb_psipts-2):
+        #print(f"x = {xidx} j = {j} nbp = {nb_psipts-2}")
+        if len(rgdarr[xidx]) == 0:
+            xidx = 0
+            while len(rgdarr[xidx]) == 0:
+                xidx += 1
+        arg = np.argmin(np.abs(np.imag(stream[j]) - np.imag(rgdarr[xidx])))
+        stream[j+1] = (rgdarr[xidx])[arg]
+        rgdarr[xidx] = np.delete(rgdarr[xidx], arg)
+        lenleft = 0
+        lenright = 0
+        if xidx > 0:
+            lenleft = len(rgdarr[xidx-1])
+        if xidx < len(rgdarr)-1:
+            lenright = len(rgdarr[xidx+1])
+        lenmiddle = len(rgdarr[xidx])
+        dists = np.zeros(3) + 1000
+        if lenleft > 0:
+            dists[0] = np.min(np.abs(stream[j] - rgdarr[xidx-1]))
+        if lenright > 0:
+            dists[2] = np.min(np.abs(stream[j] - rgdarr[xidx+1]))
+        if lenmiddle > 0:
+            dists[1] = np.min(np.abs(stream[j] - rgdarr[xidx]))
+        xidx += (np.argmin(dists)-1)
+    return stream[:-1]
 
 class SpinGen():
 
 
     def __init__(self, gamma=0):
+        self.equiphi = None
+        self.streams=None
         self.v0 = 1
         self.gamma = gamma
         self.xintval = np.array([-6,6])
         self.res = 1000
         self.a = 1
-        self.psi = np.linspace(0.2,0.9,3,)#np.linspace(0.0001,0.99,10)
-        self.phi = None
+        self.psi = np.linspace(0.2,0.9,10)#np.linspace(0.0001,0.99,10)
+        if self.gamma == 0:
+            self.psi = self.antisymmetrize(self.psi)
+        self.phi = np.linspace(-10,10, 9)
         self.dt = 0.001
         self.streams = np.empty((len(self.psi), self.res), dtype=complex)
         self.equiphi = np.empty((len(self.psi), self.res), dtype=complex)
-        self.populate_equilines()
+        #self.populate_equilines()
         self.schema = "RK4" # or "FE" or "RE"
         self.schema_dict = {"RK4": "Runge-Kutta 4",
             "FE":"Forward-Euler", "RE":"Reverse-Euler"}
     
+    def make_array(self, args):
+        data = []
+        for arg in args:
+            if arg is None:
+                data.append(None)
+            elif (not isinstance(arg, np.ndarray)):
+                data.append(np.ndarray(arg), dtype=complex)
+            else:
+                data.append(arg)
+        return data
 
     def populate_equilines(self):
         """ Find points along streams and equipotentials for plotting"""
         streams = [0]*len(self.psi)
-        x = np.linspace(self.xintval[0], self.xintval[1], 1000)
+        equiphis = [0]*len(self.phi)
+        x = np.linspace(5*self.xintval[0], 5*self.xintval[1], 1000)
         psisol = self.y_from_psix(self.psi, x)
-        print(f"psisol.shape: {psisol.shape}")
-        for i in range(len(self.psi)):
-            nb_psipts = 0
-            for j in range(len(psisol[i])):
-                nb_psipts += len(psisol[i,j])
-            stream = np.zeros(nb_psipts, dtype=complex)
-            arg = np.argmin(self.gamma*np.imag(psisol))
-            stream[0] = (psisol[i,0])[arg]
-            psisol[i,0] = np.delete(psisol[i,0], arg)
-            xidx = 1
-            for j in range(nb_psipts-2):
-                arg = np.argmin(np.abs(np.imag(stream[j]) - np.imag(psisol[i, xidx])))
-                stream[j+1] = (psisol[i, xidx])[arg]
-                psisol[i,xidx] = np.delete(psisol[i,xidx], arg)
-                lenleft = 0
-                lenright = 0
-                if xidx > 0:
-                    lenleft = len(psisol[i,xidx-1])
-                if xidx < len(psisol[i])-1:
-                    lenright = len(psisol[i,xidx+1])
-                lenmiddle = len(psisol[i,xidx])
-                dists = np.zeros(3) + 1000
-                if lenleft > 0:
-                    dists[0] = np.min(np.abs(stream[j] - psisol[i,xidx-1]))
-                if lenright > 0:
-                    dists[2] = np.min(np.abs(stream[j] - psisol[i,xidx+1]))
-                if lenmiddle > 0:
-                    dists[1] = np.min(np.abs(stream[j] - psisol[i,xidx]))
-                xidx += (np.argmin(dists)-1)
-            streams[i] = stream[:-1]
+        phisol = self.y_from_phix(self.phi, x)
+        #print(f"psisol.shape: {psisol.shape}")
+        print(f"phisol.shape: {phisol.shape}")
+        #print (f"psisol first vals: {psisol[0]}")
+        #print (f"psisol first vals: {phisol}")
+        for i in range(len(psisol)):
+            streams[i] = roots_to_parametrization(psisol[i])
+        for i in range(len(phisol)):
+            equiphis[i] = roots_to_parametrization(phisol[i])
         self.streams = streams
-        """self.equiphi
-        print(f" streams.shape {self.streams.shape}")
-        print(f" equiphi {self.equiphi.shape}")"""
+        self.equiphi = equiphis
+        
 
     def _equipsi_fn(self,psi,x):
 
@@ -99,18 +133,15 @@ class SpinGen():
 
     def y_from_psix(self, inpsi = None, xvals_in = None, innerstream=False):
         # Given a populated np.array of psi and x, find y
-        npsi = None
-        xvals = None
-        if inpsi is not None:
-            npsi = inpsi
-            if not isinstance(inpsi, np.ndarray):
-                inpsi = np.array([inpsi])
-        else:
-            npsi = self.psi
-        if xvals_in is not None:
-            xvals = xvals_in
-        else:
-            xvals = np.linspace(self.xintval[0], self.xintval[1], 1000)
+        npsi = self.psi
+        xvals = np.linspace(self.xintval[0], self.xintval[1], 1000)
+        uservals = self.make_array((inpsi, xvals_in))
+        if uservals[0] is not None:
+            npsi = uservals[0]
+        if uservals[1] is not None:
+            xvals = uservals[1]
+            #quit()
+            
 
         solution = np.empty((len(npsi), len(xvals)), dtype=np.ndarray)
         for i in range(len(npsi)):
@@ -121,11 +152,37 @@ class SpinGen():
                 roots = binsearch(equipsi, 1.5*np.linspace(-8, 8, 1000))
                 if not innerstream:
                     roots = np.delete(roots, np.where(np.abs(x+1j*roots) < self.a)[0])
-                if len(roots) == 0:
-                    print(f" y_from_psix problem at psi = {psi}, x = {x}")
+                #if len(roots) == 0:
+                    #print(f" y_from_psix problem at psi = {psi}, x = {x}")
                 solution[i,j] = x + 1j*roots
         return solution
     
+    def y_from_phix(self, inphi = None, xvals_in = None):
+        nphi = self.phi
+        xvals = np.linspace(self.xintval[0], self.xintval[1], 1000)
+        uservals = self.make_array((inphi, xvals_in))
+        if uservals[0] is not None:
+            nphi = uservals[0]
+        if uservals[1] is not None:
+            xvals = uservals[1]
+
+        solution = np.empty((len(nphi), len(xvals)), dtype=np.ndarray)
+        for i in range(len(nphi)):
+            phi = nphi[i]
+            for j in range(len(xvals)):
+                x = xvals[j]
+                equipsi = self._equiphi_fn(phi,x)
+                roots = binsearch(equipsi, 1.5*np.linspace(-8, 8, 1000))
+                roots = np.delete(roots, np.where(np.abs(x+1j*roots) < self.a)[0])
+                solution[i,j] = x + 1j*roots
+        return solution
+
+    def _equiphi_fn(self,phi,x):
+
+        def subordinate_equiphi(y):
+            return phi - (self.v0*(x+self.a**2*x/(x**2+y**2) - self.gamma/(2*np.pi)*np.arctan2(y, x)))   
+        return subordinate_equiphi
+
 
 
     def psi_from_v(self, velocity): #checked: good
@@ -250,8 +307,18 @@ def main():
     fig, ax = plt.subplots(1)
     flow = SpinGen(gamma=13.5)
     flow.populate_equilines()
-    for psilines in flow.streams:
-        ax.plot(np.real(psilines), np.imag(psilines))
+    #for psilines in flow.streams:
+        #ax.plot(np.real(psilines), np.imag(psilines), color="tab:blue")
+    for j in range(len(flow.equiphi)):
+        philine = flow.equiphi[j]
+        phi = flow.phi[j]
+        dx = np.real(philine[1] - philine[0])
+        segs = np.append(np.array([1]), np.where(np.abs(np.real(philine[1:]-philine[:-1]))>2*dx))
+        segs = np.append(segs, np.array([-1]))
+        for i in range(1, len(segs)):
+            start, stop = segs[i-1]+1, segs[i]
+            ax.plot(np.real(philine[start:stop]), 0.001*j+np.imag(philine[start:stop]), label=phi, marker="x", color="C"+str(j))
+
     t = np.linspace(0, 2*np.pi, 100)
     ax.plot(np.sin(t), np.cos(t), color="black")
     ax.set_aspect(1)
