@@ -20,7 +20,7 @@ class InerMation(animater.FlowMation):
         """ create a matrix of complex-valued coordinates that advance iteratively by time step"""
         positions = np.zeros((nb_frames, nb_particles), dtype=complex) # frame number, particle, (x,1j*y)
         dt = self.dt
-        positions[0] = self.random_initial_positions(nb_particles)
+        positions[0] = 0 + self.random_initial_positions(nb_particles)
         if np.isnan(self.velocity[0,0]):
             self.velocity[0] = super().velocityfield(positions[0])
             print("assumed fluid initial velocity")
@@ -45,16 +45,23 @@ class InerMation(animater.FlowMation):
                     c = intcp**2-1*self.a**2
                     xcol1 = 1/(2*a)*(-1*b+np.sqrt(b**2-4*a*c))
                     xcol2 = 1/(2*a)*(-1*b-np.sqrt(b**2-4*a*c))
-                    xcol = min(xcol1, xcol2)
-                    ycol = np.sqrt(np.abs(self.a**2-xcol**2))*(np.imag(position)/abs(np.imag(position)))
+                    ycol1 = np.sqrt(np.abs(self.a**2-xcol1**2))*(np.imag(position)/abs(np.imag(position)))
+                    ycol2 = np.sqrt(np.abs(self.a**2-xcol2**2))*(np.imag(position)/abs(np.imag(position)))
+                    arg = np.argmin(np.array([
+                        np.abs(position-(xcol1+1j*ycol1)), np.abs(position-(xcol2+1j*ycol2))]))
+                    col = (xcol1+1j*ycol1, xcol2+1j*ycol2)[arg]
                     ### 2.  Law of reflection of the particle's path against the surface of the circle.
                     ###     Calculate the circle's local tangent and use this to update the velocity
-                    theta = np.arctan(ycol/xcol) - np.pi/2 # tangent of the circle
-                    phi = np.arctan(slope)                 # previous trajectory of the particle
-                    newphi = 2*theta-phi
-                    self.velocity[frame,i] = np.abs(self.velocity[frame,i])*(np.cos(newphi)+1j*np.sin(newphi))
+                    pretheta = np.arctan2(np.imag(col), np.real(col)) + np.pi/2
+                    pretheta = pretheta % np.pi
+                    theta = pretheta
+                    if theta > np.pi/2:
+                        theta -= np.pi
+                    phi = np.arctan2(np.imag(velocity), np.real(velocity)) # previous trajectory of the particle
+                    newphi = (phi - 2*theta)
+                    self.velocity[frame,i] = np.abs(self.velocity[frame,i])*(np.cos(newphi)-1j*np.sin(newphi))
                     # this 0.5 coefficient is arbirtary; change later
-                    positions[frame+1, i] = xcol + 1j*ycol + 0.5*self.velocity[frame,i]*dt
+                    positions[frame+1, i] = col + 0.5*self.velocity[frame,i]*dt
 
             self.velocity[frame+1] = self.velocityfield(positions[frame], self.velocity[frame])
         return positions
@@ -80,6 +87,6 @@ class InerMation(animater.FlowMation):
 
 if __name__ == "__main__":
     flow = InerMation()
-    flow.v0 = 0.5
+    flow.v0 = 1
     print(flow.streams.shape)
-    flow.show_movie(0.001, 200,6)
+    flow.show_movie(1, 200, 3+0.1j)
