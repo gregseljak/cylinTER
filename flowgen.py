@@ -3,14 +3,14 @@ import numpy as np
 class FlowGen():
 
 
-    def __init__(self, gamma=0):
+    def __init__(self):
         self.v0 = 1
-        self.gamma = gamma
         self.xintval = np.array([-6,6])
         self.res = 1000
         self.a = 1
         self.radlen = int(self.res*np.sqrt(2))
         self.psi = self.psi_from_v(np.linspace(1.0001, 1.99, 20))
+        print(f" psi vals{self.psi}")
         self.phi = np.linspace(0,1,5)
         self.dt = 0.001
         self.streams = np.empty((len(self.psi), self.res), dtype=complex)
@@ -37,8 +37,6 @@ class FlowGen():
             self.equiphi[i] = plotpoints
         print(f" streams.shape {self.streams.shape}")
         print(f" equiphi {self.equiphi.shape}")
-
-    
 
     def psi_from_v(self, velocity): #checked: good
         """ Recover value of psi given a velocity;

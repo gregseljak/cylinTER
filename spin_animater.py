@@ -1,14 +1,14 @@
-import flowgen
+import spingen
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import __main__
 
-class FlowMation(flowgen.FlowGen):
+class FlowMation(spingen.SpinGen):
 
     def __init__(self):
-        super().__init__()
+        super().__init__(10)
         self.velocity = None
         self.positions = None
         self.dt = 0.1
@@ -21,9 +21,7 @@ class FlowMation(flowgen.FlowGen):
 
     def velocityfield(self, positions):
         velocity = 0 + 0j
-        r = np.abs(positions)
-        velocity += self.v0*(1 + self.a**2/r**2 - 2*(self.a**2)*(np.real(positions)**2)/(r**4))
-        velocity += -1j*self.v0/(r**4)*2*self.a*np.real(positions)*np.imag(positions)
+        velocity = self._particle_velocityfield(positions)
         return velocity
 
     def generate_trajectories(self, nb_frames, nb_particles):
@@ -68,11 +66,8 @@ class FlowMation(flowgen.FlowGen):
         else:
             self.dt = dt
         skip = int(T/self.v0/200/self.dt)
-        
-        print("")
-        print("="*15 + " show_movie() debug "+ "="*15)
-        print(f" dt = {self.dt}, T = {T}, skip = {skip}")
-        print(f"200*dt*skip = {200*self.dt*skip}")
+        print(self.phi)
+        self.populate_equilines()
         coordinates = self.generate_trajectories(200*skip, nb_particles)
         print(f" coordinates initial dims: {coordinates.shape}")
         coordinates = coordinates[::skip]
@@ -85,6 +80,7 @@ class FlowMation(flowgen.FlowGen):
         fig = ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
         
         carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=10, color="red") #4.5, "gray"
+        spin = ax.scatter(self.a*np.cos(t[::7]), self.a*np.sin(t[::7]), color = "tab:green")
         carte.set_zorder(10)
         ax.set_xlim([self.xintval[0]*1.1,self.xintval[1]*1.1])
         ax.set_ylim([self.xintval[0]*1.1,self.xintval[1]*1.1])
@@ -94,6 +90,11 @@ class FlowMation(flowgen.FlowGen):
         def updateData(frame):
             stack = np.column_stack(( np.real(coordinates[framerate*frame]),
                 np.imag(coordinates[framerate*frame])))
+            mycol = (np.column_stack((self.a*np.cos(t[::7] + self.gamma*frame),
+                self.a*np.sin(t[::7] + self.gamma*frame))))
+            #print(f"stack.shape {stack.shape}")
+            #print(f"mycol.shape {mycol.shape}")
+            spin.set_offsets(mycol)
             carte.set_offsets(stack)
             
             return carte
@@ -101,24 +102,25 @@ class FlowMation(flowgen.FlowGen):
         anime = animation.FuncAnimation(
             f0, updateData, blit=False, frames=coordinates.shape[0], interval=5, repeat=True)
         
-        """fname = "./"+__main__.__file__[:-3] +".mp4"
+        fname = "./"+__main__.__file__[:-3] +".mp4"
         cpynum = 0
         while os.path.isfile(fname):
-            fname = "./"+ __main__.__file__[:-3]+"_"+cpynum+".mp4" 
+            cpynum +=1 
+            fname = "./"+ __main__.__file__[:-3]+"_"+str(cpynum)+".mp4" 
         writervideo = animation.FFMpegWriter(fps=30)
         anime.save(fname, writer=writervideo)
-        print(f"saved to {fname}")"""
+        print(f"saved to {fname}")
         plt.show()
         plt.close()
     
 
     def plot_stream(self, ax):          # good
-        for equiline in self.equiphi:
+        for phival,equiline in self.equiphi:
             x = np.real(equiline)
             y = np.imag(equiline)
             ax.plot(x,y, color = "gray")
-            ax.plot(x, -1*y, color = "gray")
-        for stream in self.streams:
+            #ax.plot(x, -1*y, color = "gray")
+        for psival, stream in self.streams:
             x = np.real(stream)
             y = np.imag(stream)
             if (np.max(np.abs(np.imag(stream))) <= (self.xintval[1] - self.xintval[0])):
@@ -128,5 +130,5 @@ class FlowMation(flowgen.FlowGen):
 
 if __name__ == "__main__":
     flow = FlowMation()
-    print(flow.streams.shape)
-    flow.show_movie(0.001, 100)
+    flow.gamma = 2
+    flow.show_movie(0.001, 200)

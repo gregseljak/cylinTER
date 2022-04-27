@@ -1,9 +1,12 @@
 #%%
 import logging
+import time
+from scipy.optimize import curve_fit
+from turtle import color
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import poisson
 
-#%%
 def binsearch(function, domain):
     ydomain = domain
     survey = function(ydomain)
@@ -72,6 +75,23 @@ def roots_to_parametrization(ragged_array):
         xidx += (np.argmin(dists)-1)
     return stream[:-1]
 
+def sort_parametrization(usrinroots):
+    seglist = []
+    inroots = usrinroots
+    if not isinstance(inroots[0], np.ndarray):
+        inroots = np.array([usrinroots], dype = np.ndarray)
+    for i in range(len(inroots)):
+        sorted_roots = roots_to_parametrization(inroots[i])
+        if len(sorted_roots) <= 1:
+            continue
+        dx = np.real(sorted_roots[1] - sorted_roots[0])
+        segs = np.append(np.array([1]), np.where(np.abs(np.real(sorted_roots[1:]-sorted_roots[:-1]))>2*dx))
+        segs = np.append(segs, np.array([-1]))
+        for j in range(1, len(segs)):
+            start, stop = segs[j-1]+1, segs[j]
+            seglist.append( ((i,j), sorted_roots[start:stop]) )
+    return seglist
+
 class SpinGen():
 
 
@@ -83,10 +103,13 @@ class SpinGen():
         self.xintval = np.array([-6,6])
         self.res = 1000
         self.a = 1
-        self.psi = np.linspace(0.2,0.9,10)#np.linspace(0.0001,0.99,10)
-        if self.gamma == 0:
-            self.psi = self.antisymmetrize(self.psi)
-        self.phi = np.linspace(-10,10, 9)
+        self.psi = np.linspace(-8,8,24)
+        if 0 in self.psi:
+            print(f" WARNING 0 in SpinGen.psi")
+        basephi = np.linspace(0,self.gamma, 11)[:-1] - 3*self.gamma
+        self.phi = basephi
+        for vv in range(6):
+            self.phi = np.append(self.phi, basephi+vv*self.gamma)
         self.dt = 0.001
         self.streams = np.empty((len(self.psi), self.res), dtype=complex)
         self.equiphi = np.empty((len(self.psi), self.res), dtype=complex)
@@ -95,7 +118,9 @@ class SpinGen():
         self.schema_dict = {"RK4": "Runge-Kutta 4",
             "FE":"Forward-Euler", "RE":"Reverse-Euler"}
     
-    def make_array(self, args):
+    ### utilities ###
+    def _make_array(self, args):
+        """ utility to make optional arguments more flexible """
         data = []
         for arg in args:
             if arg is None:
@@ -106,24 +131,70 @@ class SpinGen():
                 data.append(arg)
         return data
 
-    def populate_equilines(self):
-        """ Find points along streams and equipotentials for plotting"""
-        streams = [0]*len(self.psi)
-        equiphis = [0]*len(self.phi)
-        x = np.linspace(5*self.xintval[0], 5*self.xintval[1], 1000)
+    def phifn(self, z):
+        phi = self.v0*(1+self.a**2*np.real(z)/(np.abs(z)**2))
+        phi -= self.gamma/(2*np.pi)*np.arctan2(np.imag(z), np.real(z))
+    ### end of utilities ###
+
+    def populate_equilines(self, plot=False):
+        """ Find points along streams and equipotentials for plotting.
+            Populates self.equiphi and self.equipsi with lists:
+            self.equipsi = [(psi1,zsarray1), (psi2, zsarray2), ...]
+            self.equiphi = [(phi1,zharray1), (phi2, zharray2), ...]"""
+        streams = []
+        equiphis = []
+        goodequiphi = []
+        x = np.linspace(self.xintval[0], self.xintval[1], 100)
         psisol = self.y_from_psix(self.psi, x)
+        print("done psi")
         phisol = self.y_from_phix(self.phi, x)
-        #print(f"psisol.shape: {psisol.shape}")
-        print(f"phisol.shape: {phisol.shape}")
-        #print (f"psisol first vals: {psisol[0]}")
-        #print (f"psisol first vals: {phisol}")
-        for i in range(len(psisol)):
-            streams[i] = roots_to_parametrization(psisol[i])
-        for i in range(len(phisol)):
-            equiphis[i] = roots_to_parametrization(phisol[i])
+        print("donephi")
+        streams = sort_parametrization(psisol)
+        equiphis = sort_parametrization(phisol)
+        for i in range(len(streams)):
+            psidx = ((streams[i])[0])[0]
+            streams[i] = (self.psi[psidx], (streams[i])[1])
+        for i in range(len(equiphis)):
+            phidx, line = equiphis[i]
+            #line = -1*np.conjugate(1j*line)
+            phi = self.phi[phidx[0]]
+            yidx = 0
+            while len(line)>0:
+                if yidx >= len(line)-1:
+                    goodequiphi.append((phi, np.imag(line)+1j*np.real(line)))
+                    line = []
+                elif np.abs(np.imag(line[yidx]) - np.imag(line[yidx+1])) > 0.5:
+                    #print(f" found a break at {phi}")
+                    goodequiphi.append((phi, np.imag(line)[:yidx+1]+1j*np.real(line)[:yidx+1]))
+                    line = line[yidx+1:]
+                    yidx = 0
+                else:
+                    yidx += 1
+
         self.streams = streams
-        self.equiphi = equiphis
-        
+        self.equiphi = goodequiphi
+        # graphing:
+        if plot:
+            print(f"psi: {len(self.psi)} unique seeds, {len(self.streams)} segments")
+            print(f"phi:{len(self.phi)} unique seeds, {len(self.equiphi)} segments")
+            fig, ax = plt.subplots(1)
+            mymarkers=["o", "x", ".", "P", "+"]
+            for stream in self.streams:
+                label = str(stream[0])
+                data = stream[1]
+                ax.plot(np.real(data), np.imag(data), color="tab:blue")
+            for i in range(len(self.equiphi)):
+                stream = self.equiphi[i]
+                label = str(np.round(stream[0], decimals = 3))
+                data = stream[1]
+                ax.plot(np.real(data), np.imag(data), label=label, marker=mymarkers[(i//10)//len(mymarkers)])
+            ax.set_aspect(1)
+            ax.set_xlim(-6,6)
+            ax.set_ylim(-6,6)
+            ax.legend(bbox_to_anchor=(1, 1))
+            t = np.linspace(0,np.pi*2, 100)
+            ax.plot(np.sin(t), np.cos(t), color="black")
+            return fig,ax
 
     def _equipsi_fn(self,psi,x):
 
@@ -135,13 +206,11 @@ class SpinGen():
         # Given a populated np.array of psi and x, find y
         npsi = self.psi
         xvals = np.linspace(self.xintval[0], self.xintval[1], 1000)
-        uservals = self.make_array((inpsi, xvals_in))
+        uservals = self._make_array((inpsi, xvals_in))
         if uservals[0] is not None:
             npsi = uservals[0]
         if uservals[1] is not None:
             xvals = uservals[1]
-            #quit()
-            
 
         solution = np.empty((len(npsi), len(xvals)), dtype=np.ndarray)
         for i in range(len(npsi)):
@@ -151,35 +220,41 @@ class SpinGen():
                 equipsi = self._equipsi_fn(psi,x)
                 roots = binsearch(equipsi, 1.5*np.linspace(-8, 8, 1000))
                 if not innerstream:
-                    roots = np.delete(roots, np.where(np.abs(x+1j*roots) < self.a)[0])
+                    roots = np.delete(roots, np.where(np.abs(x+1j*roots) <= self.a)[0])
                 #if len(roots) == 0:
                     #print(f" y_from_psix problem at psi = {psi}, x = {x}")
                 solution[i,j] = x + 1j*roots
         return solution
     
     def y_from_phix(self, inphi = None, xvals_in = None):
+        """ subtle difference from y_from_psix: where the streamfunction is defined continuously,
+            equiphilines have a jump discontinuity at theta=pi / theta = -pi.
+            Left untreated, this gives a line of extraneous roots at y = 0 """
         nphi = self.phi
         xvals = np.linspace(self.xintval[0], self.xintval[1], 1000)
-        uservals = self.make_array((inphi, xvals_in))
+        uservals = self._make_array((inphi, xvals_in))
         if uservals[0] is not None:
             nphi = uservals[0]
         if uservals[1] is not None:
             xvals = uservals[1]
 
+        xvals = xvals[np.where(xvals != 0)[0]]
         solution = np.empty((len(nphi), len(xvals)), dtype=np.ndarray)
         for i in range(len(nphi)):
             phi = nphi[i]
             for j in range(len(xvals)):
                 x = xvals[j]
                 equipsi = self._equiphi_fn(phi,x)
-                roots = binsearch(equipsi, 1.5*np.linspace(-8, 8, 1000))
+                #roots = binsearch(equipsi, np.linspace(0.001, 20, 500))
+                #roots = np.append(roots, binsearch(equipsi, np.linspace(-20,-0.001, 500)))
+                roots = binsearch(equipsi, np.linspace(self.xintval[0],self.xintval[-1], 1000))
                 roots = np.delete(roots, np.where(np.abs(x+1j*roots) < self.a)[0])
                 solution[i,j] = x + 1j*roots
         return solution
 
-    def _equiphi_fn(self,phi,x):
+    def _equiphi_fn(self,phi,y):
 
-        def subordinate_equiphi(y):
+        def subordinate_equiphi(x):
             return phi - (self.v0*(x+self.a**2*x/(x**2+y**2) - self.gamma/(2*np.pi)*np.arctan2(y, x)))   
         return subordinate_equiphi
 
@@ -244,9 +319,7 @@ class SpinGen():
                     k3 = self._particle_velocityfield(u + dt*k2/2)
                     k4 = self._particle_velocityfield(u + dt*k3)
                     velocity = (k1+2*k2+2*k3+k4)/6
-                if (np.real(velocity) < 0):
-                    logger.warning(f" BAD VELOCITY AT y0 = {y0}, step {itercounter}")
-                    quit()
+
                 u += velocity*dt
                 if np.abs(np.real((positions[i])[-1] - u)) > mindx:
                     # if this size of dt renders oversized dx
@@ -299,32 +372,99 @@ class SpinGen():
             yerrors[i] = np.sum(yerr)
         return yerrors
 
-        #print(rk4[:,0] - true_rk4[:,0])
 
+    def development_histograms(self, devtime):
+        zbdry = 5+5j
+        nb_particles = 5000
+        sradius = 0.5 # survey radius for the histogram
+        nb_steps = int(devtime/self.dt)
+        fig, ax = plt.subplots(3)
+        bins = np.arange(0,int(100),1, dtype=int)
+        
 
+        def uniform_distribution(arraylen:int):
+            positions = np.zeros(arraylen, dtype=complex)
+            badstarts = np.arange(0,len(positions))
+            while len(badstarts) > 0:
+                positions[badstarts] += np.random.uniform(-1*np.real(zbdry), np.real(zbdry), len(badstarts))
+                positions[badstarts] += 1j*np.random.uniform(-1*np.imag(zbdry),np.imag(zbdry), len(badstarts))
+                badstarts = np.where(np.abs(positions)<self.a)[0]
+            return positions
+
+        def identitybdry(z : np.ndarray):
+            ybound = np.where(np.abs(np.imag(z)) > np.imag(zbdry))[0]
+            xbound = np.where(np.abs(np.real(z)) > np.real(zbdry))[0]
+            z[ybound] -= np.imag(z[ybound])/np.abs(np.imag(z[ybound]))*2*np.imag(zbdry)
+            z[xbound] -= np.real(z[xbound])/np.abs(np.real(z[xbound]))*2*np.real(zbdry)
+            return z
+
+        def densitycnt(positions):
+            densitycnt = np.empty(len(positions), dtype=int)
+            pointsbybin = [[] for _ in range(len(bins)) ]
+            for i in range(len(positions)):
+                p0 = positions[i]
+                distances = identitybdry(positions - p0)
+                densitycnt[i] = int(np.sum(np.abs(distances) < sradius) - 1)
+                if np.abs(p0) < (self.a + 2*sradius):
+                    pass #densitycnt[i] /= (1-intersectingarea/np.pi*sradius**2) # it would be nice to get a function here
+                densitycnt[i] = int(np.round(densitycnt[i], decimals=0))
+                if densitycnt[i] < len(pointsbybin):
+                    pointsbybin[densitycnt[i]].append(p0)
+                else:
+                    pointsbybin[-1].append(p0)
+            return pointsbybin
+        
+        positions = uniform_distribution(nb_particles)
+        pbb0 = densitycnt(positions)
+        pbb1 = None
+        pbb2 = None
+        for step in range(nb_steps):
+            positions += self.dt*self._particle_velocityfield(positions)
+            positions = identitybdry(positions)
+            if step == int(nb_steps/2):
+                pbb1 = densitycnt(positions)
+            if (step % (nb_steps//10) == 0):
+                print(f"step {step} / {nb_steps}")
+        pbb2 = densitycnt(positions)
+        return {"nbpts":nb_particles,"bins":bins ,"ppb":(pbb0,pbb1,pbb2), "devt" :devtime, "srad":sradius}
+
+    def show_histograms(self, histdic):
+        fig, axs = plt.subplots(len(histdic["ppb"]))
+        def poi_pmf(x,mu):
+            return poisson.pmf(x,mu)
+        
+        initialfit = None
+        for i in range(len(axs)):
+            nbpts = histdic["nbpts"]
+            ppb = (histdic["ppb"])[i]
+            ctr = 0
+            instances = np.zeros(nbpts)-1
+            barvals = np.zeros(len(ppb))
+            
+            for j in range(len(ppb)):
+                instances[ctr:ctr+len(ppb[j])] = (histdic["bins"])[j]
+                ctr += len(ppb[j])
+
+                barvals[j] = len(ppb[j])/histdic["nbpts"]
+            axs[i].hist(instances, bins = histdic["bins"], density=True)
+            retval = curve_fit(poi_pmf, histdic["bins"], barvals)
+            axs[i].plot(histdic["bins"], poi_pmf(histdic["bins"],retval[0]), color="gray", linestyle="dashed", label=f"$\lambda = {retval[0]}$")
+            if i == 0:
+                initialfit = poi_pmf(histdic["bins"],retval[0])
+            else:
+                axs[i].plot(histdic["bins"], initialfit, color="black")
+            axs[i].legend()
+
+        title =f"""T=0, T={int(histdic["devt"]*50)/100}, T={int(histdic["devt"]*100)/100}"""
+        fig.suptitle(title)
+        fig.tight_layout()
+        plt.show()
 
 def main():
-    fig, ax = plt.subplots(1)
-    flow = SpinGen(gamma=13.5)
-    flow.populate_equilines()
-    #for psilines in flow.streams:
-        #ax.plot(np.real(psilines), np.imag(psilines), color="tab:blue")
-    for j in range(len(flow.equiphi)):
-        philine = flow.equiphi[j]
-        phi = flow.phi[j]
-        dx = np.real(philine[1] - philine[0])
-        segs = np.append(np.array([1]), np.where(np.abs(np.real(philine[1:]-philine[:-1]))>2*dx))
-        segs = np.append(segs, np.array([-1]))
-        for i in range(1, len(segs)):
-            start, stop = segs[i-1]+1, segs[i]
-            ax.plot(np.real(philine[start:stop]), 0.001*j+np.imag(philine[start:stop]), label=phi, marker="x", color="C"+str(j))
+    
+    flow = SpinGen(gamma=10)
+    histogram = flow.show_histograms(flow.development_histograms(1))
 
-    t = np.linspace(0, 2*np.pi, 100)
-    ax.plot(np.sin(t), np.cos(t), color="black")
-    ax.set_aspect(1)
-    plt.show()
-
-#%%
 if __name__ == "__main__":
     import argparse
     import matplotlib.pyplot as plt
@@ -340,4 +480,23 @@ if __name__ == "__main__":
                         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
     main()
-# %%
+
+
+flow = None
+def showpoints_bydensitycnt(histogram, specialvals):
+    return None
+    fig, ax = plt.subplots(1)
+    positions = histogram["ppb"]
+    pointsbybin = histogram[1]
+    ax.scatter(np.real(positions), np.imag(positions))
+    t = np.linspace(0, 2*np.pi, 150)
+    ax.plot(np.sin(t), np.cos(t), color="black")
+    if not isinstance(specialvals, np.ndarray):
+        specialvals = np.array([specialvals])
+    colord = 1
+    for val in specialvals:
+        specialpts = np.array(pointsbybin[val])
+        ax.scatter(np.real(specialpts), np.imag(specialpts), color="C"+str(colord))
+        colord += 1
+    plt.show()
+
