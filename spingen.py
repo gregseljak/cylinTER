@@ -373,13 +373,14 @@ class SpinGen():
         return yerrors
 
 
-    def development_histograms(self, devtime):
-        zbdry = 5+5j
-        nb_particles = 5000
-        sradius = 0.5 # survey radius for the histogram
+    def development_histograms(self, devtime, T1Density:int):
+        # todo: particles leaving on diagonal escape the zbdry fix
+        zbdry = 5+5j # keep it square
+        nb_particles = 20000
+        
         nb_steps = int(devtime/self.dt)
         fig, ax = plt.subplots(3)
-        bins = np.arange(0,int(100),1, dtype=int)
+        bins = np.arange(0,int(100),1, dtype=int)*2
         
 
         def uniform_distribution(arraylen:int):
@@ -397,38 +398,45 @@ class SpinGen():
             z[ybound] -= np.imag(z[ybound])/np.abs(np.imag(z[ybound]))*2*np.imag(zbdry)
             z[xbound] -= np.real(z[xbound])/np.abs(np.real(z[xbound]))*2*np.real(zbdry)
             return z
-
-        def densitycnt(positions):
-            densitycnt = np.empty(len(positions), dtype=int)
-            pointsbybin = [[] for _ in range(len(bins)) ]
-            for i in range(len(positions)):
-                p0 = positions[i]
-                distances = identitybdry(positions - p0)
-                densitycnt[i] = int(np.sum(np.abs(distances) < sradius) - 1)
-                if np.abs(p0) < (self.a + 2*sradius):
-                    pass #densitycnt[i] /= (1-intersectingarea/np.pi*sradius**2) # it would be nice to get a function here
-                densitycnt[i] = int(np.round(densitycnt[i], decimals=0))
-                if densitycnt[i] < len(pointsbybin):
-                    pointsbybin[densitycnt[i]].append(p0)
-                else:
-                    pointsbybin[-1].append(p0)
-            return pointsbybin
+        
+        linvals = np.linspace(-1*np.real(zbdry),1*np.real(zbdry), T1Density+1)[0:-1]
+        linvals = linvals + (linvals[1]-linvals[0])/2
+        def densitycnt(particles):
+            linvals = np.linspace(-1*np.real(zbdry),1*np.real(zbdry), T1Density+1)[0:-1]
+            rad = (linvals[1]-linvals[0])/2
+            print(f"rad {rad}")
+            linvals = linvals + rad
+            tuilecnts = np.empty((len(linvals),len(linvals)),dtype=int)
+            for i in range(len(tuilecnts)):
+                for j in range(len(tuilecnts)):
+                    BoolX = (np.abs(np.real(particles) - linvals[j]) < rad)
+                    BoolY = (np.abs(np.imag(particles) - linvals[i]) < rad)
+                    tuilecnts[i,j] = np.sum(BoolX*BoolY)
+            return tuilecnts.flatten()
         
         positions = uniform_distribution(nb_particles)
         pbb0 = densitycnt(positions)
         pbb1 = None
         pbb2 = None
+        #ax[0].scatter(np.real(positions[::10]), np.imag(positions[::10]))
         for step in range(nb_steps):
             positions += self.dt*self._particle_velocityfield(positions)
             positions = identitybdry(positions)
             if step == int(nb_steps/2):
                 pbb1 = densitycnt(positions)
+        #        ax[1].scatter(np.real(positions[::10]), np.imag(positions[::10]))
             if (step % (nb_steps//10) == 0):
                 print(f"step {step} / {nb_steps}")
         pbb2 = densitycnt(positions)
-        return {"nbpts":nb_particles,"bins":bins ,"ppb":(pbb0,pbb1,pbb2), "devt" :devtime, "srad":sradius}
+        #ax[2].scatter(np.real(positions[::10]), np.imag(positions[::10]))
+        scale = np.real(zbdry)
+        #ax[0].scatter(linvals, linvals, color="gray")
+        plt.show()
+
+        return {"nbpts":nb_particles,"bins":bins ,"ppb":(pbb0,pbb1,pbb2), "devt" :devtime, "srad":T1Density}
 
     def show_histograms(self, histdic):
+        # todo: least-squares poisson pmf not working anymore :(
         fig, axs = plt.subplots(len(histdic["ppb"]))
         def poi_pmf(x,mu):
             return poisson.pmf(x,mu)
@@ -437,33 +445,36 @@ class SpinGen():
         for i in range(len(axs)):
             nbpts = histdic["nbpts"]
             ppb = (histdic["ppb"])[i]
-            ctr = 0
-            instances = np.zeros(nbpts)-1
-            barvals = np.zeros(len(ppb))
-            
-            for j in range(len(ppb)):
-                instances[ctr:ctr+len(ppb[j])] = (histdic["bins"])[j]
-                ctr += len(ppb[j])
-
-                barvals[j] = len(ppb[j])/histdic["nbpts"]
-            axs[i].hist(instances, bins = histdic["bins"], density=True)
-            retval = curve_fit(poi_pmf, histdic["bins"], barvals)
-            axs[i].plot(histdic["bins"], poi_pmf(histdic["bins"],retval[0]), color="gray", linestyle="dashed", label=f"$\lambda = {retval[0]}$")
+            vals, bins, patches = axs[i].hist(ppb, bins = histdic["bins"], density=True)
+            print(f"np.sum(vals) {np.sum(vals)}")
+            binmid = bins[:-1] + (bins[1] -bins[0])/2
+            #axs[i].plot(binmid, vals)
+            vals *= 2
+            retval = curve_fit(poi_pmf, binmid, vals)
+            print(f"retval[0] {retval[0]}")
+            retval = (12.5, None)
+            axs[i].plot(binmid, poi_pmf(binmid,retval[0]), color="gray", linestyle="dashed", label=f"$\lambda = {retval[0]}$")
             if i == 0:
                 initialfit = poi_pmf(histdic["bins"],retval[0])
             else:
                 axs[i].plot(histdic["bins"], initialfit, color="black")
-            axs[i].legend()
 
         title =f"""T=0, T={int(histdic["devt"]*50)/100}, T={int(histdic["devt"]*100)/100}"""
         fig.suptitle(title)
         fig.tight_layout()
         plt.show()
 
+
+
+
+
+
+
+
 def main():
     
     flow = SpinGen(gamma=10)
-    histogram = flow.show_histograms(flow.development_histograms(1))
+    histogram = flow.show_histograms(flow.development_histograms(1,40))
 
 if __name__ == "__main__":
     import argparse
@@ -485,18 +496,22 @@ if __name__ == "__main__":
 flow = None
 def showpoints_bydensitycnt(histogram, specialvals):
     return None
-    fig, ax = plt.subplots(1)
-    positions = histogram["ppb"]
-    pointsbybin = histogram[1]
-    ax.scatter(np.real(positions), np.imag(positions))
-    t = np.linspace(0, 2*np.pi, 150)
-    ax.plot(np.sin(t), np.cos(t), color="black")
-    if not isinstance(specialvals, np.ndarray):
-        specialvals = np.array([specialvals])
-    colord = 1
-    for val in specialvals:
-        specialpts = np.array(pointsbybin[val])
-        ax.scatter(np.real(specialpts), np.imag(specialpts), color="C"+str(colord))
-        colord += 1
-    plt.show()
-
+    
+    """
+    ### miscreated function
+    ### returns histogram of points by local density (ie. cluster)
+    def densitycnt(positions):
+            densitycnt = np.empty(len(positions), dtype=int)
+            pointsbybin = [[] for _ in range(len(bins)) ]
+            for i in range(len(positions)):
+                p0 = positions[i]
+                distances = identitybdry(positions - p0)
+                densitycnt[i] = int(np.sum(np.abs(distances) < sradius) - 1)
+                if np.abs(p0) < (self.a + 2*sradius):
+                    pass #densitycnt[i] /= (1-intersectingarea/np.pi*sradius**2) # it would be nice to get a function here
+                densitycnt[i] = int(np.round(densitycnt[i], decimals=0))
+                if densitycnt[i] < len(pointsbybin):
+                    pointsbybin[densitycnt[i]].append(p0)
+                else:
+                    pointsbybin[-1].append(p0)
+            return pointsbybin"""
