@@ -447,7 +447,7 @@ class SpinGen():
             ppb = (histdic["ppb"])[i]
             vals, bins, patches = axs[i].hist(ppb, bins = histdic["bins"], density=True)
             print(f"np.sum(vals) {np.sum(vals)}")
-            binmid = bins[:-1] + (bins[1] -bins[0])/2
+            binmid = bins[:-1] + 1#(bins[1] -bins[0])/2
             #axs[i].plot(binmid, vals)
             vals *= 2
             retval = curve_fit(poi_pmf, binmid, vals)
@@ -474,7 +474,7 @@ class SpinGen():
 def main():
     
     flow = SpinGen(gamma=10)
-    histogram = flow.show_histograms(flow.development_histograms(1,40))
+    histogram = flow.show_histograms(flow.development_histograms(10,40))
 
 if __name__ == "__main__":
     import argparse
