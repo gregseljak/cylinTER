@@ -5,10 +5,11 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import __main__
 
-class FlowMation(spingen.SpinGen):
+class SFlowMation(spingen.SpinGen):
 
-    def __init__(self):
-        super().__init__(10)
+    def __init__(self,gamma=10):
+        super().__init__(gamma)
+        self.gamma = gamma
         self.velocity = None
         self.positions = None
         self.dt = 0.1
@@ -49,6 +50,8 @@ class FlowMation(spingen.SpinGen):
         self.positions = positions
         return positions
 
+    def _obstacle_eqn(self, t):
+        return self.a*np.cos(t) +1j*self.a*np.sin(t)
 
     def show_movie(self, dt=0.1, nb_particles = 2):
         """
@@ -77,10 +80,10 @@ class FlowMation(spingen.SpinGen):
         self.plot_stream(ax)
         # plot the cylinder
         t = np.linspace(0, 2*np.pi, 100)
-        fig = ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
+        fig = ax.plot(np.real(self._obstacle_eqn(t)), np.imag(self._obstacle_eqn(t)), color="black")
         
-        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=10, color="red") #4.5, "gray"
-        spin = ax.scatter(self.a*np.cos(t[::7]), self.a*np.sin(t[::7]), color = "tab:green")
+        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=0.001,color="white")#s=10, color="red")
+        ##spin = ax.scatter(self.a*np.cos(t[::7]), self.a*np.sin(t[::7]), color = "tab:green")
         carte.set_zorder(10)
         ax.set_xlim([self.xintval[0]*1.1,self.xintval[1]*1.1])
         ax.set_ylim([self.xintval[0]*1.1,self.xintval[1]*1.1])
@@ -90,11 +93,11 @@ class FlowMation(spingen.SpinGen):
         def updateData(frame):
             stack = np.column_stack(( np.real(coordinates[framerate*frame]),
                 np.imag(coordinates[framerate*frame])))
-            mycol = (np.column_stack((self.a*np.cos(t[::7] + self.gamma*frame),
-                self.a*np.sin(t[::7] + self.gamma*frame))))
+            #mycol = (np.column_stack((self.a*np.cos(t[::7] + self.gamma*frame),
+            #    self.a*np.sin(t[::7] + self.gamma*frame))))
             #print(f"stack.shape {stack.shape}")
             #print(f"mycol.shape {mycol.shape}")
-            spin.set_offsets(mycol)
+            ##spin.set_offsets(mycol)
             carte.set_offsets(stack)
             
             return carte
@@ -129,6 +132,6 @@ class FlowMation(spingen.SpinGen):
         ax.set_aspect(1)
 
 if __name__ == "__main__":
-    flow = FlowMation()
-    flow.gamma = 2
-    flow.show_movie(0.001, 200)
+    flow = SFlowMation()
+    flow.gamma = 10
+    flow.show_movie(0.0001, 200)

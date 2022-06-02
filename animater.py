@@ -84,7 +84,7 @@ class FlowMation(flowgen.FlowGen):
         t = np.linspace(0, 2*np.pi, 100)
         fig = ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
         
-        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=10, color="red") #4.5, "gray"
+        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=0.0001, color="white")#s=10, color="red") #4.5, "gray"
         carte.set_zorder(10)
         ax.set_xlim([self.xintval[0]*1.1,self.xintval[1]*1.1])
         ax.set_ylim([self.xintval[0]*1.1,self.xintval[1]*1.1])

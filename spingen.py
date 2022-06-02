@@ -372,22 +372,24 @@ class SpinGen():
             yerrors[i] = np.sum(yerr)
         return yerrors
 
+    def FEvelocityfield(self, positions):
+        """ Don't change; namespace creator for inertial subclass """
+        return self._particle_velocityfield(positions)
 
-    def development_histograms(self, devtime, T1Density:int):
-        # todo: particles leaving on diagonal escape the zbdry fix
+    def development_histograms(self, T1Density:int):
+
         zbdry = 5+5j # keep it square
-        nb_particles = 20000
-        
-        nb_steps = int(devtime/self.dt)
+        nb_particles = int(20000/(40**2)*T1Density**2) 
         fig, ax = plt.subplots(3)
         bins = np.arange(0,int(100),1, dtype=int)*2
         
+        stopcondition = 0
 
         def uniform_distribution(arraylen:int):
             positions = np.zeros(arraylen, dtype=complex)
             badstarts = np.arange(0,len(positions))
             while len(badstarts) > 0:
-                positions[badstarts] += np.random.uniform(-1*np.real(zbdry), np.real(zbdry), len(badstarts))
+                positions[badstarts] = np.random.uniform(-1*np.real(zbdry), np.real(zbdry), len(badstarts))
                 positions[badstarts] += 1j*np.random.uniform(-1*np.imag(zbdry),np.imag(zbdry), len(badstarts))
                 badstarts = np.where(np.abs(positions)<self.a)[0]
             return positions
@@ -395,16 +397,29 @@ class SpinGen():
         def identitybdry(z : np.ndarray):
             ybound = np.where(np.abs(np.imag(z)) > np.imag(zbdry))[0]
             xbound = np.where(np.abs(np.real(z)) > np.real(zbdry))[0]
-            z[ybound] -= np.imag(z[ybound])/np.abs(np.imag(z[ybound]))*2*np.imag(zbdry)
-            z[xbound] -= np.real(z[xbound])/np.abs(np.real(z[xbound]))*2*np.real(zbdry)
+            z[ybound] -= 1j*(np.imag(z[ybound])/np.abs(np.imag(z[ybound])))*2*np.imag(zbdry)
+            z[xbound] -=    (np.real(z[xbound])/np.abs(np.real(z[xbound])))*2*np.real(zbdry)
+
+            center = np.where(np.abs(z) < self.a)[0]
+            z[center] = z[center] + 2*(1-np.abs(z[center]))*(z[center])
+            z[center] = z[center] - 2*np.real(z[center])
             return z
+        
         
         linvals = np.linspace(-1*np.real(zbdry),1*np.real(zbdry), T1Density+1)[0:-1]
         linvals = linvals + (linvals[1]-linvals[0])/2
+        """ count how many paves are in the central disk"""
+        D0paves = 0
+        for i in range(len(linvals)-1):
+            for j in range(len(linvals)-1):
+                coins = np.array([linvals[i]+1j*linvals[j], linvals[i]+1j*linvals[j+1], 
+                    linvals[i+1]+1j*linvals[j], linvals[i]+1j*linvals[j]])
+                if np.sum(np.abs(coins)<1) == 4:
+                    D0paves += 1
+
         def densitycnt(particles):
             linvals = np.linspace(-1*np.real(zbdry),1*np.real(zbdry), T1Density+1)[0:-1]
             rad = (linvals[1]-linvals[0])/2
-            print(f"rad {rad}")
             linvals = linvals + rad
             tuilecnts = np.empty((len(linvals),len(linvals)),dtype=int)
             for i in range(len(tuilecnts)):
@@ -412,69 +427,108 @@ class SpinGen():
                     BoolX = (np.abs(np.real(particles) - linvals[j]) < rad)
                     BoolY = (np.abs(np.imag(particles) - linvals[i]) < rad)
                     tuilecnts[i,j] = np.sum(BoolX*BoolY)
-            return tuilecnts.flatten()
+            tuilecnts = tuilecnts.flatten()
+            tuilecnts = np.delete(tuilecnts, np.where(tuilecnts == 0)[0][:D0paves])
+            return tuilecnts
         
+        
+
         positions = uniform_distribution(nb_particles)
         pbb0 = densitycnt(positions)
+        ax[0].scatter(np.real(positions), np.imag(positions))
         pbb1 = None
         pbb2 = None
-        #ax[0].scatter(np.real(positions[::10]), np.imag(positions[::10]))
-        for step in range(nb_steps):
-            positions += self.dt*self._particle_velocityfield(positions)
-            positions = identitybdry(positions)
-            if step == int(nb_steps/2):
-                pbb1 = densitycnt(positions)
-        #        ax[1].scatter(np.real(positions[::10]), np.imag(positions[::10]))
-            if (step % (nb_steps//10) == 0):
-                print(f"step {step} / {nb_steps}")
-        pbb2 = densitycnt(positions)
-        #ax[2].scatter(np.real(positions[::10]), np.imag(positions[::10]))
-        scale = np.real(zbdry)
-        #ax[0].scatter(linvals, linvals, color="gray")
-        plt.show()
+        step = 0
+        while (stopcondition < int(nb_particles/2)):
 
-        return {"nbpts":nb_particles,"bins":bins ,"ppb":(pbb0,pbb1,pbb2), "devt" :devtime, "srad":T1Density}
+            positions += self.dt*self.FEvelocityfield(positions)
+            stopcondition += np.sum(np.real(positions) > np.real(zbdry))
+            positions = identitybdry(positions)
+            step += 1
+            if step == 2000:
+                pbb1 = densitycnt(positions)
+                ax[1].scatter(np.real(positions), np.imag(positions))
+            if (step % (100) == 0):
+                print(f"step {step}: {int(100*stopcondition/int(nb_particles/2))} % done")
+        pbb2 = densitycnt(positions)
+
+        ax[2].scatter(np.real(positions), np.imag(positions))
+        for a in ax:
+            t = np.linspace(0,2*np.pi, 500)
+            a.plot(np.cos(t), np.sin(t), color="black")
+            a.set_aspect(1)
+        plt.show()
+        fig, ax = plt.subplots(1)
+        ax.scatter(np.real(positions), np.imag(positions))
+        t = np.linspace(0,2*np.pi, 500)
+        ax.plot(np.cos(t), np.sin(t), color="black")
+        ax.set_aspect(1)
+        fig.suptitle(f"$N={T1Density}$, $\gamma={self.gamma}$")
+        plt.show()
+        
+        return {"nbpts":nb_particles,"bins":bins ,"ppb":(pbb0,pbb1,pbb2), "devt" :step, "srad":T1Density}
+
+
 
     def show_histograms(self, histdic):
-        # todo: least-squares poisson pmf not working anymore :(
-        fig, axs = plt.subplots(len(histdic["ppb"]))
+
+        fig, axs = plt.subplots(len(histdic["ppb"]), sharex= True, sharey=True)
+        
         def poi_pmf(x,mu):
             return poisson.pmf(x,mu)
-        
-        initialfit = None
+
+        esperance = 20000/(40**2)*((5**2)/(5**2-np.pi)) 
+        initialfit = poi_pmf(histdic["bins"], esperance)
+        print(f" Calculated parameter: {esperance}")
         for i in range(len(axs)):
             nbpts = histdic["nbpts"]
             ppb = (histdic["ppb"])[i]
             vals, bins, patches = axs[i].hist(ppb, bins = histdic["bins"], density=True)
-            print(f"np.sum(vals) {np.sum(vals)}")
-            binmid = bins[:-1] + 1#(bins[1] -bins[0])/2
-            #axs[i].plot(binmid, vals)
             vals *= 2
-            retval = curve_fit(poi_pmf, binmid, vals)
-            print(f"retval[0] {retval[0]}")
-            retval = (12.5, None)
-            axs[i].plot(binmid, poi_pmf(binmid,retval[0]), color="gray", linestyle="dashed", label=f"$\lambda = {retval[0]}$")
-            if i == 0:
-                initialfit = poi_pmf(histdic["bins"],retval[0])
-            else:
-                axs[i].plot(histdic["bins"], initialfit, color="black")
+            binmid = bins[:-1]+2# + (bins[1] - bins[0])/2
+            esperance = 20000/(40**2)*((5**2)/(5**2-np.pi)) 
+            retval = curve_fit(poi_pmf, binmid, vals*len(ppb))
+            
+            print(f"Empirical poisson parameter: {retval[0]} : R^2 = {np.sum((poi_pmf(binmid,retval[0])-vals)**2)}")
 
-        title =f"""T=0, T={int(histdic["devt"]*50)/100}, T={int(histdic["devt"]*100)/100}"""
+            axs[i].plot(binmid-1, poi_pmf(binmid,retval[0]), color="gray", linestyle="dashed", label=f"$\lambda = {retval[0]}$")
+            axs[i].plot(histdic["bins"]-1, initialfit, color="black")
+            subtitle = ["T=0", f"T={self.dt*2000}", f"""T={int(histdic["devt"]*100)/100}"""][i]
+            axs[i].set_title
+        axs[0].set_xlim(0,75)
+        title =f"""$\gamma={self.gamma}$, $N={histdic["srad"]}$"""
         fig.suptitle(title)
         fig.tight_layout()
         plt.show()
 
 
-
-
-
-
-
-
-def main():
+class InertialGen(SpinGen):
     
-    flow = SpinGen(gamma=10)
-    histogram = flow.show_histograms(flow.development_histograms(10,40))
+    def __init__(self,gamma):
+        super().__init__(gamma)
+        self.tau = 2
+        self.prev_velocity = None
+
+    def FEvelocityfield(self, positions):
+        if self.prev_velocity is None:
+            self.prev_velocity = np.zeros(len(positions))
+        fluidvelo = super()._particle_velocityfield(positions)
+        inertialvelo = self.prev_velocity + self.dt*(fluidvelo - self.prev_velocity)/self.tau
+        self.prev_velocity = inertialvelo
+        return inertialvelo
+
+
+
+
+flow = None
+histogram = None
+def main(gamma):
+    
+    #flow = SpinGen(gamma=gamma)
+    flow = InertialGen(gamma=0)
+    flow.tau = 8
+
+    histogram = flow.show_histograms(flow.development_histograms(100))
 
 if __name__ == "__main__":
     import argparse
@@ -483,6 +537,7 @@ if __name__ == "__main__":
     parser.add_argument("-v", type=int, default=3,
                         help=("set logging level: 0 critical, 1 error, "
                               "2 warning, 3 info, 4 debug, default info"))
+    parser.add_argument("-g", type=float, default=0.0, help=("gamma"))
     
     args = parser.parse_args()
     logging_translate = [logging.CRITICAL, logging.ERROR, logging.WARNING,
@@ -490,28 +545,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging_translate[args.v],
                         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
-    main()
+    main(args.g)
 
-
-flow = None
-def showpoints_bydensitycnt(histogram, specialvals):
-    return None
-    
-    """
-    ### miscreated function
-    ### returns histogram of points by local density (ie. cluster)
-    def densitycnt(positions):
-            densitycnt = np.empty(len(positions), dtype=int)
-            pointsbybin = [[] for _ in range(len(bins)) ]
-            for i in range(len(positions)):
-                p0 = positions[i]
-                distances = identitybdry(positions - p0)
-                densitycnt[i] = int(np.sum(np.abs(distances) < sradius) - 1)
-                if np.abs(p0) < (self.a + 2*sradius):
-                    pass #densitycnt[i] /= (1-intersectingarea/np.pi*sradius**2) # it would be nice to get a function here
-                densitycnt[i] = int(np.round(densitycnt[i], decimals=0))
-                if densitycnt[i] < len(pointsbybin):
-                    pointsbybin[densitycnt[i]].append(p0)
-                else:
-                    pointsbybin[-1].append(p0)
-            return pointsbybin"""
