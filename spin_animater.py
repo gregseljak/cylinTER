@@ -82,7 +82,7 @@ class SFlowMation(spingen.SpinGen):
         t = np.linspace(0, 2*np.pi, 100)
         fig = ax.plot(np.real(self._obstacle_eqn(t)), np.imag(self._obstacle_eqn(t)), color="black")
         
-        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=0.001,color="white")#s=10, color="red")
+        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=10, color="red")
         ##spin = ax.scatter(self.a*np.cos(t[::7]), self.a*np.sin(t[::7]), color = "tab:green")
         carte.set_zorder(10)
         ax.set_xlim([self.xintval[0]*1.1,self.xintval[1]*1.1])

@@ -20,7 +20,7 @@ class InerMation(animater.FlowMation):
         """ create a matrix of complex-valued coordinates that advance iteratively by time step"""
         positions = np.zeros((nb_frames, nb_particles), dtype=complex) # frame number, particle, (x,1j*y)
         dt = self.dt
-        positions[0] = 0 + self.random_initial_positions(nb_particles)
+        positions[0] = self.xintval[0] + 1j*np.linspace(self.xintval[-1], self.xintval[0], nb_particles)#0 + self.random_initial_positions(nb_particles)
         if np.isnan(self.velocity[0,0]):
             self.velocity[0] = super().velocityfield(positions[0])
             print("assumed fluid initial velocity")
@@ -84,9 +84,34 @@ class InerMation(animater.FlowMation):
             self.velocity[0] = np.nan # to be resolved by generate_trajectories
 
         super().show_movie(self.dt, nb_particles)
+        t = np.linspace(0,2*np.pi, 100)
+        coordinates = self.coordinates
+        for i in range(4):
+            fig, ax = plt.subplots(1)
+            ax.set_aspect(1)
+            self.plot_stream(ax)
+            ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
+            T = min(int(len(self.coordinates)/4*i), len(self.coordinates)-1)
+            particules = ax.scatter(np.real(self.coordinates[T,::4]), \
+                np.imag(self.coordinates[T,::4]), s=20, color="red")
+            particules.set_zorder(10)
+            ax.set_xlim([self.xintval[0]*1.1,self.xintval[1]*1.1])
+            ax.set_ylim([self.xintval[0]*1.1,self.xintval[1]*1.1])
+            plt.show()
+        fig, ax = plt.subplots(1)
+        ax.set_aspect(1)
+        self.plot_stream(ax)
+        ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
+        for i in range(100):
+            p =min(int(len(coordinates[0])/25*i), len(coordinates[0])-1)
+            trajectoires = ax.plot(np.real(coordinates[:,p]), np.imag(coordinates[:,p]),\
+                 linestyle="dashed", color="red",linewidth=8, zorder=10)
+        ax.set_xlim([self.xintval[0]*1.1,self.xintval[1]*1.1])
+        ax.set_ylim([self.xintval[0]*1.1,self.xintval[1]*1.1])
+        plt.show()
 
 if __name__ == "__main__":
     flow = InerMation()
     flow.v0 = 1
     print(flow.streams.shape)
-    flow.show_movie(1, 200, 3+0.1j)
+    flow.show_movie(1, 100, 1+0j)

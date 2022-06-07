@@ -30,7 +30,7 @@ class FlowMation(flowgen.FlowGen):
         dt = self.dt
         """ create a matrix of complex-valued coordinates that advance iteratively by time step"""
         positions = np.zeros((nb_frames, nb_particles), dtype=complex) # frame number, particle, (x,1j*y)
-        positions[0,:] = self.random_initial_positions(nb_particles)
+        positions[0,:] = self.xintval[0] + 1j*np.linspace(self.xintval[-1], self.xintval[0], nb_particles)#self.random_initial_positions(nb_particles)
         self.velocity = np.zeros((nb_frames, nb_particles), dtype=complex)
         
         if self.schema == "FE":
@@ -50,6 +50,7 @@ class FlowMation(flowgen.FlowGen):
                 positions[frame+1] = positions[frame] + self.velocity[frame]*dt
         self.positions = positions
         return positions
+
 
 
     def show_movie(self, dt=0.1, nb_particles = 2):
@@ -77,14 +78,14 @@ class FlowMation(flowgen.FlowGen):
         print(f" coordinates initial dims: {coordinates.shape}")
         coordinates = coordinates[::skip]
         print(f" ater trim: {coordinates.shape}")
-
+        self.coordinates = coordinates
         f0, ax = plt.subplots()
         self.plot_stream(ax)
         # plot the cylinder
         t = np.linspace(0, 2*np.pi, 100)
         fig = ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
         
-        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=0.0001, color="white")#s=10, color="red") #4.5, "gray"
+        carte = ax.scatter(np.real(coordinates[0,:]), np.imag(coordinates[0,:]), s=10, color="red") 
         carte.set_zorder(10)
         ax.set_xlim([self.xintval[0]*1.1,self.xintval[1]*1.1])
         ax.set_ylim([self.xintval[0]*1.1,self.xintval[1]*1.1])
@@ -110,7 +111,28 @@ class FlowMation(flowgen.FlowGen):
         print(f"saved to {fname}")"""
         plt.show()
         plt.close()
-    
+
+        for i in range(4):
+            fig, ax = plt.subplots(1)
+            ax.set_aspect(1)
+            self.plot_stream(ax)
+            ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
+            T = min(int(len(coordinates)/4*i), len(coordinates)-1)
+            particules = ax.scatter(np.real(coordinates[T,::4]), np.imag(coordinates[T,::4]), s=20, color="red")
+            particules.set_zorder(10)
+            ax.set_xlim([self.xintval[0]*1.1,self.xintval[1]*1.1])
+            ax.set_ylim([self.xintval[0]*1.1,self.xintval[1]*1.1])
+            plt.show()
+        fig, ax = plt.subplots(1)
+        ax.set_aspect(1)
+        self.plot_stream(ax)
+        ax.plot(self.a*np.cos(t), self.a*np.sin(t), color="black")
+        for i in range(100):
+            p =min(int(len(coordinates[0])/25*i), len(coordinates[0])-1)
+            trajectoires = ax.plot(np.real(coordinates[:,p]), np.imag(coordinates[:,p]), linestyle="dashed", color="red",linewidth=0.75, zorder=10)
+        ax.set_xlim([self.xintval[0]*1.1,self.xintval[1]*1.1])
+        ax.set_ylim([self.xintval[0]*1.1,self.xintval[1]*1.1])
+        plt.show()
 
     def plot_stream(self, ax):          # good
         for equiline in self.equiphi:

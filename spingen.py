@@ -334,7 +334,7 @@ class SpinGen():
         print(f" maxlen {maxlength}")
         for i in range(len(pos_array)):
             ulen = len(positions[i])
-            pos_array[i,:ulen] = np.array(positions[i])
+            pos_array[i,:ulen] = np.array(positions[i].flatten())
             pos_array[i,ulen:] = np.nan
         return pos_array
 
@@ -351,7 +351,6 @@ class SpinGen():
         4. Pour trouver l'integrale on fait la partition de la trajectoire
             comme elle se présente directement
         """
-        self.schema = "RK4"
 
         rk4 = self.xintval_integration()
         validity_vec = np.argmin(np.isnan(rk4) == False, axis=1)
@@ -381,7 +380,7 @@ class SpinGen():
         zbdry = 5+5j # keep it square
         nb_particles = int(20000/(40**2)*T1Density**2) 
         fig, ax = plt.subplots(3)
-        bins = np.arange(0,int(100),1, dtype=int)*2
+        bins = np.arange(0,int(100),1, dtype=int)
         
         stopcondition = 0
 
@@ -459,7 +458,7 @@ class SpinGen():
             a.set_aspect(1)
         plt.show()
         fig, ax = plt.subplots(1)
-        ax.scatter(np.real(positions), np.imag(positions))
+        ax.scatter(np.real(positions[::10]), np.imag(positions[::10]), s=5)
         t = np.linspace(0,2*np.pi, 500)
         ax.plot(np.cos(t), np.sin(t), color="black")
         ax.set_aspect(1)
@@ -482,6 +481,7 @@ class SpinGen():
         print(f" Calculated parameter: {esperance}")
         for i in range(len(axs)):
             nbpts = histdic["nbpts"]
+            print(f" nbpts = {nbpts}")
             ppb = (histdic["ppb"])[i]
             vals, bins, patches = axs[i].hist(ppb, bins = histdic["bins"], density=True)
             vals *= 2
@@ -489,7 +489,7 @@ class SpinGen():
             esperance = 20000/(40**2)*((5**2)/(5**2-np.pi)) 
             retval = curve_fit(poi_pmf, binmid, vals*len(ppb))
             
-            print(f"Empirical poisson parameter: {retval[0]} : R^2 = {np.sum((poi_pmf(binmid,retval[0])-vals)**2)}")
+            print(f"Empirical poisson parameter: {retval[0]} : L^2 on analytic: = {np.sum((poi_pmf(binmid,esperance)-vals)**2)}")
 
             axs[i].plot(binmid-1, poi_pmf(binmid,retval[0]), color="gray", linestyle="dashed", label=f"$\lambda = {retval[0]}$")
             axs[i].plot(histdic["bins"]-1, initialfit, color="black")
@@ -518,17 +518,17 @@ class InertialGen(SpinGen):
         return inertialvelo
 
 
+#%%
 
+flow = SpinGen(gamma=0)
+print(f" schema : {flow.schema}")
+yerrors = flow.evaluate_xerror()
 
-flow = None
-histogram = None
+#%%
+
 def main(gamma):
     
-    #flow = SpinGen(gamma=gamma)
-    flow = InertialGen(gamma=0)
-    flow.tau = 8
-
-    histogram = flow.show_histograms(flow.development_histograms(100))
+    flow = SpinGen(gamma=0)
 
 if __name__ == "__main__":
     import argparse

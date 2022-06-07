@@ -1,3 +1,4 @@
+#%%
 import logging
 import numpy as np
 class FlowGen():
@@ -10,7 +11,7 @@ class FlowGen():
         self.a = 1
         self.radlen = int(self.res*np.sqrt(2))
         self.psi = self.psi_from_v(np.linspace(1.0001, 1.99, 20))
-        print(f" psi vals{self.psi}")
+        #print(f" psi vals{self.psi}")
         self.phi = np.linspace(0,1,5)
         self.dt = 0.001
         self.streams = np.empty((len(self.psi), self.res), dtype=complex)
@@ -61,27 +62,33 @@ class FlowGen():
         velocity += self.v0*(1 + self.a**2/r**2 - 2*(self.a**2)*(np.real(u)**2)/(r**4))
         velocity += -1j*self.v0/(r**4)*2*self.a*np.real(u)*np.imag(u)
         return velocity
+    
+    def psi(self, z):
+        r = np.abs()
+        return self.v0 - self.v0*self.a**2/(r**2)
 
     def xintval_integration(self, mindx = 0.001):
         """ create a matrix of complex-valued coordinates that advance iteratively by time step"""
         dt = self.dt
         positions = None
-        y0 = None
+        y0 = np.linspace(-6,6,10)
         static_castx = np.array([self.xintval[0]])  # unfortunately necessary
-        y0 = self.y_from_psix(inpsi = self.psi, xvals_in=static_castx)
+
+        
+
         #print(f" y0 = {y0}")
         positions = [ [] for _ in range(len(y0)) ]
         maxlength = 0
         for i in range(len(y0)):
             itercounter = 0
             
-            u = (self.xintval[0] + 1j*y0[i])[0]
+            u = (self.xintval[0] + 1j*y0[i])
             (positions[i]).append(u)
             while (np.real(u) < self.xintval[1]):
                 velocity = 0 + 0j
                 itercounter += 1
                 #if itercounter % 2500 == 0:
-                #    print(f" particle {y0[i]} at {itercounter}: {np.real(u), np.imag(u)}")
+                    #print(f" particle {y0[i]} at {itercounter}: {np.real(u), np.imag(u)}")
 
                 if self.schema == "FE":
                     velocity = self._particle_velocityfield(u)
@@ -98,22 +105,15 @@ class FlowGen():
                     logger.warning(f" BAD VELOCITY AT y0 = {y0}, step {itercounter}")
                     quit()
                 u += velocity*dt
-                if np.abs(np.real((positions[i])[-1] - u)) > mindx:
+                """if np.abs(np.real((positions[i])[-1] - u)) > mindx:
                     # if this size of dt renders oversized dx
                     # reduce timestep size, and then reset the step
                     dt /= 2
-                    u = (positions[i])[-1]
-                else:
-                    (positions[i]).append(u)
+                    u = (positions[i])[-1]"""
+                    #else:
+                (positions[i]).append(u)
 
-        maxlength = max(len(i) for i in positions)            
-        pos_array = np.empty((len(y0), maxlength), dtype=complex)
-        print(f" maxlen {maxlength}")
-        for i in range(len(pos_array)):
-            ulen = len(positions[i])
-            pos_array[i,:ulen] = np.array(positions[i])
-            pos_array[i,ulen:] = np.nan
-        return pos_array
+        return positions
 
     def y_from_psix(self, inpsi = None, xvals_in = None, innerstream=None):
         # Given a populated np.array of psi and x, find y
@@ -177,40 +177,59 @@ class FlowGen():
         4. Pour trouver l'integrale on fait la partition de la trajectoire
             comme elle se présente directement
         """
-        self.schema = "RK4"
+        #self.schema = "RK4"
 
-        rk4 = self.xintval_integration()
-        validity_vec = np.argmin(np.isnan(rk4) == False, axis=1)
-        psivals = self.v0*(1-self.a**2/ ((np.abs(rk4[:,0]))**2) )*np.imag(rk4[:,0])
-        true_rk4 = np.zeros(rk4.shape, dtype=complex)
-        yerrors = np.zeros(len(rk4))
-        for i in range(len(rk4)):
-            last_idx = 0
-            if validity_vec[i] != 0:
-                last_idx = validity_vec[i]
-            else:
-                last_idx = -1
-            true_rk4[i,:last_idx] = 1j*self.y_from_psix(np.array([psivals[i]]), np.real(rk4[i,:last_idx]))
-            true_rk4[i,:last_idx] += np.real(rk4[i,:last_idx])
-            xmaillage = np.real(rk4[i,:last_idx]) - np.real(np.roll(rk4[i, :last_idx], shift=1))
-            xmaillage[0] = (self.xintval[1] - self.xintval[0]) - np.sum(xmaillage[1:])
-            yerr = xmaillage*np.abs(np.imag(true_rk4[i,:last_idx]) - np.imag(rk4[i,:last_idx]))
-            yerrors[i] = np.sum(yerr)
-        return yerrors
-
-        #print(rk4[:,0] - true_rk4[:,0])
-
-        
+        schemasol = self.xintval_integration()
+        yerror = np.zeros(len(schemasol))
+        for i in range(len(schemasol)):
+            SSvec = np.array(schemasol[i]).flatten()
+            psi = self.v0*(1-self.a**2/ ((np.abs(SSvec[0]))**2) )*np.imag(SSvec[0])
+            trueline = 1j*self.y_from_psix([psi], np.real(SSvec))[0]
+            trueline += np.real(SSvec)
+            xmaillage = np.real(SSvec)[1:] - np.real(SSvec)[:-1]
+            line_differences = (np.imag(SSvec - trueline)**2)[1:]
+            scaled = line_differences*xmaillage
+            yerror[i] = np.sum(scaled)
+        return yerror
 
 
+
+flow = FlowGen()
+#%%
+import pandas as pd
+
+DT = np.array([0.25, 0.1, 0.05, 0.025])
+df = pd.DataFrame(data=np.zeros((4,2)), columns=["FE", "RK4"],index=DT)
+for schema in ["FE", "RK4"]:
+    for dt in DT:
+        print(f" {schema}, {dt}")
+        flow.dt = dt
+        flow.schema = schema
+        result = np.mean(np.abs(flow.evaluate_xerror()))
+        print(result)
+        df[schema].loc[dt] = result
+        print("-"*30)
+        print("\n")
+#%%
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots(1)
+ax.loglog(DT, np.sqrt(df["FE"]),  label="FE",  marker="x")
+ax.loglog(DT, np.sqrt(df["RK4"]), label="RK4", marker="x")
+ax.loglog(DT, 0.1*DT, color="gray", label="$\delta t$")
+ax.loglog(DT, 0.001*DT**4, color="gray", linestyle="dashed", label="$\delta t^2$")
+ax.legend()
+fig.suptitle("Erreur en RMS vs dt")
+plt.show()
+#%%
+"""
 def main():
     flow = FlowGen()
-    flow.xintval = np.array([-5,5])
+    flow.xintval = np.array([-6,6])
+    
+    flow.dt = 0.1
     flow.schema = "FE"
     print(flow.evaluate_xerror())
-    logger.info("test of logger info")
     return flow
-    #flow.show_movie(100, nb_particles=50)
 
 if __name__ == "__main__":
     import argparse
@@ -226,3 +245,4 @@ if __name__ == "__main__":
                         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
     main()
+    """
